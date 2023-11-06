@@ -1,11 +1,14 @@
 #include "CrossWindow/CrossWindow.h"
+#include "webgpu/webgpu.h"
 
-void xmain(int argc, const char** argv)
+#include <iostream>
+
+void xmain(int argc, const char **argv)
 {
     // 🖼️ Create Window Description
     xwin::WindowDesc windowDesc;
     windowDesc.name = "Test";
-    windowDesc.title = "My Title";
+    windowDesc.title = "wgpu";
     windowDesc.visible = true;
     windowDesc.width = 1280;
     windowDesc.height = 720;
@@ -17,10 +20,25 @@ void xmain(int argc, const char** argv)
     xwin::EventQueue eventQueue;
 
     if (!window.create(windowDesc, eventQueue))
-    { return; }
+    {
+        return;
+    }
 
     // 🏁 Engine loop
     bool isRunning = true;
+
+    WGPUInstanceDescriptor desc = {};
+    desc.nextInChain = nullptr;
+
+    WGPUInstance instance = wgpuCreateInstance(&desc);
+
+    if (!instance)
+    {
+        std::cout << "Failed to create instance" << std::endl;
+        return;
+    }
+
+    std::cout << "Created instance: " << instance << std::endl;
 
     while (isRunning)
     {
@@ -30,7 +48,7 @@ void xmain(int argc, const char** argv)
         // 🎈 Iterate through that queue:
         while (!eventQueue.empty())
         {
-            const xwin::Event& event = eventQueue.front();
+            const xwin::Event &event = eventQueue.front();
 
             if (event.type == xwin::EventType::MouseInput)
             {
@@ -45,4 +63,6 @@ void xmain(int argc, const char** argv)
             eventQueue.pop();
         }
     }
+
+    wgpuInstanceRelease(instance);
 }
