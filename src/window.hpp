@@ -4,19 +4,26 @@
 
 #include <string>
 
+struct GraphicsDevice_t;
+
 class CWindow {
 private:
 	//
 	// Window properties
 	//
-	int Width				= 1600;
-	int Height				= 900;
-	std::string Title		= "My Window";
+	int Width								= 1600;
+	int Height								= 900;
+	std::string Title						= "My Window";
+
+	//
+	// Rendering
+	//
+	GraphicsDevice_t* GraphicsDevice		= nullptr;
 
 	//
 	// Events
 	//
-	void (*FrameFunc)(void)	= nullptr;
+	void (*FrameFunc)(GraphicsDevice_t*)	= nullptr;
 
 public:
 	Point2_t GetSize() { return Point2_t{ Width, Height }; }
@@ -25,8 +32,10 @@ public:
 	void SetTitle(std::string title) { Title = title; }
 	std::string GetTitle() { return Title; };
 
-	void SetFrameFunc(void (*func)(void)) { FrameFunc = func; }
+	void SetFrameFunc(void (*func)(GraphicsDevice_t*)) { FrameFunc = func; }
 	void Run();
+
+	void SetGraphicsDevice(GraphicsDevice_t* graphicsDevice) { GraphicsDevice = graphicsDevice; }
 
 	CWindow();
 	~CWindow();

@@ -46,7 +46,7 @@ void CWindow::Run()
 		// Render
 		//
 		if (FrameFunc)
-			FrameFunc();
+			FrameFunc(GraphicsDevice);
 		else
 			std::cout << "FrameFunc is null!" << std::endl;
 	}
