@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="E:\hackweek-webgpu\thirdparty\crosswindow\src\CrossWindow\Main\Win32Main.cpp" />
+    <ClCompile Include="E:\hackweek-webgpu\main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="E:\hackweek-webgpu\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{6FDF7FFD-0582-3B76-A8A9-DC705CE16A2D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
