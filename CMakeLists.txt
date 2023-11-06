@@ -4,9 +4,8 @@ project(HackweekWebGPU VERSION 1.0.0 LANGUAGES CXX)
 add_subdirectory(thirdparty/crosswindow)    # CrossWindow
 add_subdirectory(thirdparty/dawn)           # webgpu
 
-set(SOURCE_FILES
-  main.cpp
-)
+# Glob src/
+file(GLOB_RECURSE SOURCE_FILES src/*.cpp src/*.h)
 
 xwin_add_executable(
   ${PROJECT_NAME}
