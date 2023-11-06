@@ -52,17 +52,27 @@ WGPUInstance CreateInstance()
 
 GraphicsDevice_t::GraphicsDevice_t()
 {
+	//
+	// Instance
+	//
 	Instance = CreateInstance();
-
 	std::cout << "Created instance: " << Instance << std::endl;
 
+	//
+	// Adapter
+	//
 	WGPURequestAdapterOptions adapterOpts = {};
-	WGPUAdapter adapter = RequestAdapter(Instance, &adapterOpts);
+	Adapter = RequestAdapter(Instance, &adapterOpts);
+	std::cout << "Got adapter: " << Adapter << std::endl;
+}
 
-	std::cout << "Got adapter: " << adapter << std::endl;
+GraphicsDevice_t::~GraphicsDevice_t() {
+#define RELEASE(x) do { if(x) { wgpu##x##Release(x); x = nullptr; } } while(0)
+	RELEASE(Instance);
+	RELEASE(Adapter);
+#undef RELEASE
 }
 
 void Graphics::OnRender(GraphicsDevice_t* gpu)
 {
-	std::cout << "Graphics::OnRender()" << std::endl;
 }
