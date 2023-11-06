@@ -452,3 +452,4 @@ _deps
 
 ### CMake Patch ###
 *-prefix/
+build/
