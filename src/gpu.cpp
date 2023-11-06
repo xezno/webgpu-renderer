@@ -1,4 +1,5 @@
 #include "gpu.hpp"
+#include "window.hpp"
 
 #include "webgpu/webgpu.h"
 
@@ -50,13 +51,18 @@ WGPUInstance CreateInstance()
 	return instance;
 }
 
-GraphicsDevice_t::GraphicsDevice_t()
+GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 {
 	//
 	// Instance
 	//
 	Instance = CreateInstance();
 	std::cout << "Created instance: " << Instance << std::endl;
+
+	//
+	// Surface
+	//
+	Surface = window->GetSurface(Instance);
 
 	//
 	// Adapter

@@ -1,4 +1,6 @@
 #include "CrossWindow/CrossWindow.h"
+#include "CrossWindow/Graphics.h"
+
 #include "window.hpp"
 
 #include <iostream>
@@ -15,19 +17,16 @@ void CWindow::Run()
 		.name = "Main Window"
 	};
 
-	xwin::Window window;
-	xwin::EventQueue eventQueue;
-
-	if (!window.create(windowDesc, eventQueue))
+	if (!Window.create(windowDesc, EventQueue))
 		return;
 
 	bool shouldRun = true;
 	while (shouldRun)
 	{
-		eventQueue.update();
-		while (!eventQueue.empty())
+		EventQueue.update();
+		while (!EventQueue.empty())
 		{
-			const xwin::Event& event = eventQueue.front();
+			const xwin::Event& event = EventQueue.front();
 
 			if (event.type == xwin::EventType::MouseInput)
 			{
@@ -35,11 +34,11 @@ void CWindow::Run()
 			}
 			if (event.type == xwin::EventType::Close)
 			{
-				window.close();
+				Window.close();
 				shouldRun = false;
 			}
 
-			eventQueue.pop();
+			EventQueue.pop();
 		}
 
 		//
@@ -50,6 +49,12 @@ void CWindow::Run()
 		else
 			std::cout << "FrameFunc is null!" << std::endl;
 	}
+}
+
+WGPUSurface* CWindow::GetSurface(WGPUInstance* instance)
+{
+	xgfx::getSurface()
+	
 }
 
 CWindow::~CWindow()

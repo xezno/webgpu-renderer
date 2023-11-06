@@ -2,13 +2,17 @@
 
 #include "webgpu/webgpu.h"
 
+class CWindow;
+
 struct GraphicsDevice_t
 {
-public:
-	WGPUInstance Instance;
-	WGPUAdapter Adapter;
+private:
+	WGPUInstance Instance				= nullptr;
+	WGPUAdapter Adapter					= nullptr;
+	WGPUSurface Surface					= nullptr;
 
-	GraphicsDevice_t();
+public:
+	GraphicsDevice_t(CWindow* window);
 	~GraphicsDevice_t();
 };
 

@@ -5,6 +5,8 @@
 #include <string>
 
 struct GraphicsDevice_t;
+struct WGPUInstance;
+struct WGPUSurface;
 
 class CWindow {
 private:
@@ -25,6 +27,12 @@ private:
 	//
 	void (*FrameFunc)(GraphicsDevice_t*)	= nullptr;
 
+	//
+	// CrossWindow
+	//
+	xwin::Window Window;
+	xwin::EventQueue EventQueue;
+
 public:
 	Point2_t GetSize() { return Point2_t{ Width, Height }; }
 	void SetSize(Point2_t size) { Width = size.x; Height = size.y; }
@@ -36,6 +44,8 @@ public:
 	void Run();
 
 	void SetGraphicsDevice(GraphicsDevice_t* graphicsDevice) { GraphicsDevice = graphicsDevice; }
+
+	WGPUSurface* GetSurface(WGPUInstance* instance);
 
 	CWindow();
 	~CWindow();
