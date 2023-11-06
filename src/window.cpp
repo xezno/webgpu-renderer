@@ -8,11 +8,11 @@ CWindow::CWindow() {}
 void CWindow::Run()
 {
 	xwin::WindowDesc windowDesc = {
-		.width = 1280,
-		.height = 720,
+		.width = (unsigned int)Width,
+		.height = (unsigned int)Height,
 		.visible = true,
-		.title = "CWindow Test",
-		.name = "Test"
+		.title = Title,
+		.name = "Main Window"
 	};
 
 	xwin::Window window;
