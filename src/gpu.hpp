@@ -2,7 +2,7 @@
 
 struct GraphicsDevice_t
 {
-
+	GraphicsDevice_t();
 };
 
 namespace Graphics
