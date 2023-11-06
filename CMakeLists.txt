@@ -12,7 +12,7 @@ xwin_add_executable(
   "${SOURCE_FILES}"
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20)
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE "/WX")

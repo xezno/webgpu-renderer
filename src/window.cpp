@@ -7,59 +7,49 @@ CWindow::CWindow() {}
 
 void CWindow::Run()
 {
-  // 🖼️ Create Window Description
-  xwin::WindowDesc windowDesc;
-  windowDesc.name = "Test";
-  windowDesc.title = "CWindow Test";
-  windowDesc.visible = true;
-  windowDesc.width = 1280;
-  windowDesc.height = 720;
+	xwin::WindowDesc windowDesc = {
+		.width = 1280,
+		.height = 720,
+		.visible = true,
+		.title = "CWindow Test",
+		.name = "Test"
+	};
 
-  bool closed = false;
+	xwin::Window window;
+	xwin::EventQueue eventQueue;
 
-  // 🌟 Initialize
-  xwin::Window window;
-  xwin::EventQueue eventQueue;
+	if (!window.create(windowDesc, eventQueue))
+		return;
 
-  if (!window.create(windowDesc, eventQueue))
-  {
-    return;
-  }
+	bool shouldRun = true;
+	while (shouldRun)
+	{
+		eventQueue.update();
+		while (!eventQueue.empty())
+		{
+			const xwin::Event& event = eventQueue.front();
 
-  bool shouldRun = true;
-  while (shouldRun)
-  {
-    // ♻️ Update the event queue
-    eventQueue.update();
+			if (event.type == xwin::EventType::MouseInput)
+			{
+				const xwin::MouseInputData mouse = event.data.mouseInput;
+			}
+			if (event.type == xwin::EventType::Close)
+			{
+				window.close();
+				shouldRun = false;
+			}
 
-    // 🎈 Iterate through that queue:
-    while (!eventQueue.empty())
-    {
-      const xwin::Event &event = eventQueue.front();
+			eventQueue.pop();
+		}
 
-      if (event.type == xwin::EventType::MouseInput)
-      {
-        const xwin::MouseInputData mouse = event.data.mouseInput;
-      }
-      if (event.type == xwin::EventType::Close)
-      {
-        window.close();
-        shouldRun = false;
-      }
-
-      eventQueue.pop();
-    }
-
-    // Render
-    if (FrameFunc)
-    {
-      FrameFunc();
-    }
-    else
-    {
-      std::cout << "FrameFunc is null!" << std::endl;
-    }
-  }
+		//
+		// Render
+		//
+		if (FrameFunc)
+			FrameFunc();
+		else
+			std::cout << "FrameFunc is null!" << std::endl;
+	}
 }
 
 CWindow::~CWindow()
