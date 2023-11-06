@@ -52,12 +52,12 @@ WGPUInstance CreateInstance()
 
 GraphicsDevice_t::GraphicsDevice_t()
 {
-	WGPUInstance instance = CreateInstance();
+	Instance = CreateInstance();
 
-	std::cout << "Created instance: " << instance << std::endl;
+	std::cout << "Created instance: " << Instance << std::endl;
 
 	WGPURequestAdapterOptions adapterOpts = {};
-	WGPUAdapter adapter = RequestAdapter(instance, &adapterOpts);
+	WGPUAdapter adapter = RequestAdapter(Instance, &adapterOpts);
 
 	std::cout << "Got adapter: " << adapter << std::endl;
 }
