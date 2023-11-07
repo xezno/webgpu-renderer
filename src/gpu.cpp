@@ -84,15 +84,13 @@ WGPUSwapChain CreateSwapChain(WGPUDevice device, CWindow* window)
 	WGPUSwapChainDescriptor swapchainDesc = {
 		.nextInChain = nullptr,
 		.usage = WGPUTextureUsage_RenderAttachment,
-		.format = WGPUTextureFormat_BGRA8Unorm, // Dawn only supports this as swapchain - `wgpuSurfaceGetPreferredFormat` not implemented
+		.format = WGPUTextureFormat_BGRA8Unorm, // note: Dawn only supports this as swapchain right now, `wgpuSurfaceGetPreferredFormat` not implemented
 		.width = static_cast<uint32_t>(window->GetSize().x),
 		.height = static_cast<uint32_t>(window->GetSize().y),
-		.presentMode = WGPUPresentMode_Fifo // First in, first out queue
+		.presentMode = WGPUPresentMode_Fifo
 	};
 
-	// We can safely pass nullptr in here because the surface has already been 
-	// created - we're just retrieving it (note: this is shit)
-	WGPUSurface surface = window->GetSurface(nullptr);
+	WGPUSurface surface = window->GetSurface();
 	WGPUSwapChain swapChain = wgpuDeviceCreateSwapChain(device, surface, &swapchainDesc);
 
 	return swapChain;
@@ -109,7 +107,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	//
 	// Surface
 	//
-	Surface = window->GetSurface(Instance);
+	Surface = window->CreateSurface(Instance);
 
 	//
 	// Adapter
@@ -150,27 +148,6 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Main command context
 	//
 	Queue = wgpuDeviceGetQueue(Device);
-
-	WGPUCommandEncoderDescriptor encoderDesc = {
-		.nextInChain = nullptr,
-		.label = "Command encoder"
-	};
-	WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(Device, &encoderDesc);
-
-	// Test debug marker
-	wgpuCommandEncoderInsertDebugMarker(encoder, "Do a thing");
-
-	WGPUCommandBufferDescriptor cmdBufferDescriptor = {
-		.nextInChain = nullptr,
-		.label = "Command buffer"
-	};
-	WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
-
-	std::cout << "Submitting command" << std::endl;
-	wgpuQueueSubmit(Queue, 1, &command);
-
-	wgpuCommandEncoderRelease(encoder);
-	wgpuCommandBufferRelease(command);
 	
 	//
 	// Swapchain
@@ -191,6 +168,53 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 {
 	WGPUTextureView nextTexture = wgpuSwapChainGetCurrentTextureView(gpu->SwapChain);
 	std::cout << "Next texture: " << nextTexture << std::endl;
+
+	//
+	// Create command encoder
+	//
+	WGPUCommandEncoderDescriptor encoderDesc = {
+		.nextInChain = nullptr,
+		.label = "Command encoder"
+	};
+	WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu->Device, &encoderDesc);
+
+	//
+	// Encode commands
+	//
+	wgpuCommandEncoderInsertDebugMarker(encoder, "Main render pass");
+
+	WGPURenderPassColorAttachment renderPassColorAttachment = {
+		.view = nextTexture,
+		.resolveTarget = nullptr,
+		.loadOp = WGPULoadOp_Clear,
+		.storeOp = WGPUStoreOp_Store,
+		.clearValue = WGPUColor{ 0.7, 0.4, 1.0, 1.0 }
+	};
+
+	WGPURenderPassDescriptor renderPassDesc = {
+		.nextInChain = nullptr,
+		.colorAttachmentCount = 1,
+		.colorAttachments = &renderPassColorAttachment,
+		.depthStencilAttachment = nullptr,
+		.timestampWrites = nullptr
+	};
+	
+	WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
+	wgpuRenderPassEncoderEnd(renderPass);
+
+	//
+	// Finish rendering
+	//
+	WGPUCommandBufferDescriptor cmdBufferDescriptor = {
+		.nextInChain = nullptr,
+		.label = "Command buffer"
+	};
+	WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
+
+	wgpuQueueSubmit(gpu->Queue, 1, &command);
+
+	wgpuCommandEncoderRelease(encoder);
+	wgpuCommandBufferRelease(command);
 
 	wgpuSwapChainPresent(gpu->SwapChain);
 

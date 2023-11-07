@@ -34,11 +34,16 @@ void CWindow::Run()
 	}
 }
 
-WGPUSurface CWindow::GetSurface(WGPUInstance instance)
+WGPUSurface CWindow::CreateSurface(WGPUInstance instance)
 {
 	if (Surface == nullptr)
 		Surface = glfwGetWGPUSurface(instance, Window);
 
+	return Surface;
+}
+
+WGPUSurface CWindow::GetSurface()
+{
 	return Surface;
 }
 

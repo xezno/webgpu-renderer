@@ -16,8 +16,8 @@ private:
 	//
 	// Window properties
 	//
-	int Width													= 1600;
-	int Height													= 900;
+	int Width													= 1280;
+	int Height													= 720;
 	std::string Title											= "Hack week - WebGPU";
 
 	//
@@ -66,7 +66,10 @@ public:
 	void SetGraphicsDevice(GraphicsDevice_t* graphicsDevice)	{ GraphicsDevice = graphicsDevice; }
 
 	// Get the WebGPU surface to render to
-	WGPUSurface GetSurface(WGPUInstance instance);
+	WGPUSurface GetSurface();
+
+	// Create a WebGPU surface to render to
+	WGPUSurface CreateSurface(WGPUInstance instance);
 
 	CWindow();
 	~CWindow();
