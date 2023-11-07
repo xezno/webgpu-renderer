@@ -6,21 +6,23 @@
 #include <cassert>
 #include <iostream>
 
-WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options) {
-	struct UserData {
+WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options)
+{
+	struct Data
+	{
 		WGPUAdapter adapter = nullptr;
 		bool requestEnded = false;
-	};
+	} userData;
 
-	UserData userData;
-	auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, char const* message, void* pUserData) {
-		UserData& userData = *reinterpret_cast<UserData*>(pUserData);
-		if (status == WGPURequestAdapterStatus_Success) {
+	auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, char const* message, void* pUserData)
+	{
+		Data& userData = *(Data*)pUserData;
+
+		if (status == WGPURequestAdapterStatus_Success)
 			userData.adapter = adapter;
-		}
-		else {
+		else
 			std::cout << "Could not get WebGPU adapter: " << message << std::endl;
-		}
+
 		userData.requestEnded = true;
 	};
 
@@ -33,6 +35,32 @@ WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions cons
 
 	assert(userData.requestEnded);
 	return userData.adapter;
+}
+
+WGPUDevice RequestDevice(WGPUAdapter adapter, WGPUDeviceDescriptor const* descriptor)
+{
+	struct Data
+	{
+		WGPUDevice device = nullptr;
+		bool requestEnded = false;
+	} userData;
+
+	auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status, WGPUDevice device, char const* message, void* pUserData)
+	{
+		Data& userData = *(Data*)pUserData;
+
+		if (status == WGPURequestDeviceStatus_Success)
+			userData.device = device;
+		else
+			std::cout << "Could not get WebGPU device: " << message << std::endl;
+
+		userData.requestEnded = true;
+	};
+
+	wgpuAdapterRequestDevice(adapter, descriptor, onDeviceRequestEnded, (void*)&userData);
+
+	assert(userData.requestEnded);
+	return userData.device;
 }
 
 WGPUInstance CreateInstance()
@@ -70,12 +98,30 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	WGPURequestAdapterOptions adapterOpts = {};
 	Adapter = RequestAdapter(Instance, &adapterOpts);
 	std::cout << "Got adapter: " << Adapter << std::endl;
+
+	//
+	// Device
+	//
+	WGPUDeviceDescriptor deviceDesc = {
+		.nextInChain = nullptr,
+		.label = "Main Device",
+		.requiredFeatureCount = 0,
+		.requiredLimits = nullptr,
+
+		.defaultQueue = {
+			.nextInChain = nullptr,
+			.label = "Main Queue"
+		}
+	};
+	Device = RequestDevice(Adapter, &deviceDesc);
+	std::cout << "Got device: " << Device << std::endl;
 }
 
 GraphicsDevice_t::~GraphicsDevice_t() {
 #define RELEASE(x) do { if(x) { wgpu##x##Release(x); x = nullptr; } } while(0)
 	RELEASE(Instance);
 	RELEASE(Adapter);
+	RELEASE(Device);
 #undef RELEASE
 }
 

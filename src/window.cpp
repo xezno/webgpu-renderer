@@ -7,13 +7,20 @@
 CWindow::CWindow()
 {
 	glfwInit();
+
+	// Non-resizable window
+	glfwWindowHint(GLFW_RESIZABLE, 0);
+	Window = glfwCreateWindow(Width, Height, Title.c_str(), nullptr, nullptr);
+}
+
+bool CWindow::ShouldWindowClose()
+{
+	return glfwWindowShouldClose(Window);
 }
 
 void CWindow::Run()
 {
-	GLFWwindow* window = glfwCreateWindow(Width, Height, Title.c_str(), nullptr, nullptr);
-
-	while (!glfwWindowShouldClose(window))
+	while (!ShouldWindowClose())
 	{
 		glfwPollEvents();
 
@@ -25,8 +32,6 @@ void CWindow::Run()
 		else
 			std::cout << "FrameFunc is null!" << std::endl;
 	}
-
-	glfwDestroyWindow(window);
 }
 
 WGPUSurface CWindow::GetSurface(WGPUInstance instance)
@@ -40,5 +45,6 @@ WGPUSurface CWindow::GetSurface(WGPUInstance instance)
 
 CWindow::~CWindow()
 {
+	glfwDestroyWindow(Window);
 	glfwTerminate();
 }
