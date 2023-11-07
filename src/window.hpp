@@ -2,11 +2,11 @@
 
 #include "math/point2.hpp"
 
+#include <webgpu/webgpu.h>
 #include <string>
 
 struct GraphicsDevice_t;
-struct WGPUInstance;
-struct WGPUSurface;
+struct GLFWwindow;
 
 class CWindow {
 private:
@@ -28,10 +28,10 @@ private:
 	void (*FrameFunc)(GraphicsDevice_t*)	= nullptr;
 
 	//
-	// CrossWindow
+	// GLFW
 	//
-	xwin::Window Window;
-	xwin::EventQueue EventQueue;
+	GLFWwindow* Window;
+	WGPUSurface Surface;
 
 public:
 	Point2_t GetSize() { return Point2_t{ Width, Height }; }
@@ -45,7 +45,7 @@ public:
 
 	void SetGraphicsDevice(GraphicsDevice_t* graphicsDevice) { GraphicsDevice = graphicsDevice; }
 
-	WGPUSurface* GetSurface(WGPUInstance* instance);
+	WGPUSurface GetSurface(WGPUInstance instance);
 
 	CWindow();
 	~CWindow();

@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.0...3.25)
 project(HackweekWebGPU VERSION 1.0.0 LANGUAGES CXX)
 
-add_subdirectory(thirdparty/crosswindow)            # CrossWindow
-add_subdirectory(thirdparty/crosswindow-graphics)   # CrossWindowGraphics
+add_subdirectory(thirdparty/glfw)                   # glfw
 add_subdirectory(thirdparty/dawn)                   # webgpu
+add_subdirectory(thirdparty/glfw3webgpu)            # glfw3webgpu
 
 # Glob src/
 file(GLOB_RECURSE SOURCE_FILES src/*.cpp src/*.h)
 
-xwin_add_executable(
+add_executable(
   ${PROJECT_NAME}
   "${SOURCE_FILES}"
 )
@@ -23,9 +23,9 @@ endif()
 
 target_link_libraries(
   ${PROJECT_NAME}
-  CrossWindow
+  glfw
   webgpu
-  CrossWindowGraphics
+  glfw3webgpu
 )
 
 target_copy_webgpu_binaries(${PROJECT_NAME})

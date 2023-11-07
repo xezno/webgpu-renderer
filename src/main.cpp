@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-void xmain(int argc, const char **argv)
+int main(int argc, const char **argv)
 {
     //
     // Set up window
@@ -15,8 +15,11 @@ void xmain(int argc, const char **argv)
     //
     // Set up gpu
     //
-    GraphicsDevice_t gpu;
+    GraphicsDevice_t gpu(&window);
     window.SetGraphicsDevice(&gpu);
 
     window.Run();
+
+
+    return 0;
 }

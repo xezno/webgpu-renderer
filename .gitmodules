@@ -1,6 +1,0 @@
-[submodule "thirdparty/crosswindow"]
-	path = thirdparty/crosswindow
-	url = https://github.com/alaingalvan/crosswindow.git
-[submodule "thirdparty/crosswindow-graphics"]
-	path = thirdparty/crosswindow-graphics
-	url = https://github.com/alaingalvan/crosswindow-graphics.git

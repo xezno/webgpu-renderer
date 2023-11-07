@@ -1,45 +1,21 @@
-#include "CrossWindow/CrossWindow.h"
-#include "CrossWindow/Graphics.h"
-
 #include "window.hpp"
 
+#include <GLFW/glfw3.h>
 #include <iostream>
+#include <glfw3webgpu.h>
 
-CWindow::CWindow() {}
+CWindow::CWindow()
+{
+	glfwInit();
+}
 
 void CWindow::Run()
 {
-	xwin::WindowDesc windowDesc = {
-		.width = (unsigned int)Width,
-		.height = (unsigned int)Height,
-		.visible = true,
-		.title = Title,
-		.name = "Main Window"
-	};
+	GLFWwindow* window = glfwCreateWindow(Width, Height, Title.c_str(), nullptr, nullptr);
 
-	if (!Window.create(windowDesc, EventQueue))
-		return;
-
-	bool shouldRun = true;
-	while (shouldRun)
+	while (!glfwWindowShouldClose(window))
 	{
-		EventQueue.update();
-		while (!EventQueue.empty())
-		{
-			const xwin::Event& event = EventQueue.front();
-
-			if (event.type == xwin::EventType::MouseInput)
-			{
-				const xwin::MouseInputData mouse = event.data.mouseInput;
-			}
-			if (event.type == xwin::EventType::Close)
-			{
-				Window.close();
-				shouldRun = false;
-			}
-
-			EventQueue.pop();
-		}
+		glfwPollEvents();
 
 		//
 		// Render
@@ -49,14 +25,20 @@ void CWindow::Run()
 		else
 			std::cout << "FrameFunc is null!" << std::endl;
 	}
+
+	glfwDestroyWindow(window);
 }
 
-WGPUSurface* CWindow::GetSurface(WGPUInstance* instance)
+WGPUSurface CWindow::GetSurface(WGPUInstance instance)
 {
-	xgfx::getSurface()
-	
+	if (Surface == nullptr)
+	{
+		Surface = glfwGetWGPUSurface(instance, Window);
+	}
+	return Surface;
 }
 
 CWindow::~CWindow()
 {
+	glfwTerminate();
 }

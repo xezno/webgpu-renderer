@@ -1,7 +1,7 @@
 #include "gpu.hpp"
 #include "window.hpp"
 
-#include "webgpu/webgpu.h"
+#include <webgpu/webgpu.h>
 
 #include <cassert>
 #include <iostream>
