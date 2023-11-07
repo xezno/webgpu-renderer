@@ -28,4 +28,5 @@ target_link_libraries(
   glfw3webgpu
 )
 
+set_target_properties(${PROJECT_NAME} PROPERTIES VS_DEBUGGER_ENVIRONMENT "DAWN_DEBUG_BREAK_ON_ERROR=1")
 target_copy_webgpu_binaries(${PROJECT_NAME})

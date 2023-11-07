@@ -115,6 +115,17 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	};
 	Device = RequestDevice(Adapter, &deviceDesc);
 	std::cout << "Got device: " << Device << std::endl;
+
+	//
+	// Error callback
+	//
+	auto onDeviceError = [](WGPUErrorType type, char const* message, void* pUserData)
+	{
+		std::cout << "Uncaptured device error: type " << type;
+		if (message) std::cout << " (" << message << ")";
+		std::cout << std::endl;
+	};
+	wgpuDeviceSetUncapturedErrorCallback(Device, onDeviceError, nullptr);
 }
 
 GraphicsDevice_t::~GraphicsDevice_t() {
