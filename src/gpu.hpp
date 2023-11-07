@@ -9,13 +9,13 @@ class CWindow;
  */
 struct GraphicsDevice_t
 {
-private:
 	WGPUInstance Instance										= nullptr;
 	WGPUAdapter Adapter											= nullptr;
 	WGPUSurface Surface											= nullptr;
 	WGPUDevice Device											= nullptr;
+	WGPUQueue Queue												= nullptr;
+	WGPUSwapChain SwapChain										= nullptr;
 
-public:
 	GraphicsDevice_t(CWindow* window);
 	~GraphicsDevice_t();
 };

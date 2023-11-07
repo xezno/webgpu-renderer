@@ -37,9 +37,8 @@ void CWindow::Run()
 WGPUSurface CWindow::GetSurface(WGPUInstance instance)
 {
 	if (Surface == nullptr)
-	{
 		Surface = glfwGetWGPUSurface(instance, Window);
-	}
+
 	return Surface;
 }
 

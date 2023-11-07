@@ -79,6 +79,25 @@ WGPUInstance CreateInstance()
 	return instance;
 }
 
+WGPUSwapChain CreateSwapChain(WGPUDevice device, CWindow* window)
+{
+	WGPUSwapChainDescriptor swapchainDesc = {
+		.nextInChain = nullptr,
+		.usage = WGPUTextureUsage_RenderAttachment,
+		.format = WGPUTextureFormat_BGRA8Unorm, // Dawn only supports this as swapchain - `wgpuSurfaceGetPreferredFormat` not implemented
+		.width = static_cast<uint32_t>(window->GetSize().x),
+		.height = static_cast<uint32_t>(window->GetSize().y),
+		.presentMode = WGPUPresentMode_Fifo // First in, first out queue
+	};
+
+	// We can safely pass nullptr in here because the surface has already been 
+	// created - we're just retrieving it (note: this is shit)
+	WGPUSurface surface = window->GetSurface(nullptr);
+	WGPUSwapChain swapChain = wgpuDeviceCreateSwapChain(device, surface, &swapchainDesc);
+
+	return swapChain;
+}
+
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 {
 	//
@@ -126,6 +145,37 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 		std::cout << std::endl;
 	};
 	wgpuDeviceSetUncapturedErrorCallback(Device, onDeviceError, nullptr);
+
+	//
+	// Main command context
+	//
+	Queue = wgpuDeviceGetQueue(Device);
+
+	WGPUCommandEncoderDescriptor encoderDesc = {
+		.nextInChain = nullptr,
+		.label = "Command encoder"
+	};
+	WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(Device, &encoderDesc);
+
+	// Test debug marker
+	wgpuCommandEncoderInsertDebugMarker(encoder, "Do a thing");
+
+	WGPUCommandBufferDescriptor cmdBufferDescriptor = {
+		.nextInChain = nullptr,
+		.label = "Command buffer"
+	};
+	WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
+
+	std::cout << "Submitting command" << std::endl;
+	wgpuQueueSubmit(Queue, 1, &command);
+
+	wgpuCommandEncoderRelease(encoder);
+	wgpuCommandBufferRelease(command);
+	
+	//
+	// Swapchain
+	//
+	SwapChain = CreateSwapChain(Device, window);
 }
 
 GraphicsDevice_t::~GraphicsDevice_t() {
@@ -133,9 +183,19 @@ GraphicsDevice_t::~GraphicsDevice_t() {
 	RELEASE(Instance);
 	RELEASE(Adapter);
 	RELEASE(Device);
+	RELEASE(SwapChain);
 #undef RELEASE
 }
 
 void Graphics::OnRender(GraphicsDevice_t* gpu)
 {
+	WGPUTextureView nextTexture = wgpuSwapChainGetCurrentTextureView(gpu->SwapChain);
+	std::cout << "Next texture: " << nextTexture << std::endl;
+
+	wgpuSwapChainPresent(gpu->SwapChain);
+
+	//
+	// Cleanup
+	//
+	wgpuTextureViewRelease(nextTexture);
 }
