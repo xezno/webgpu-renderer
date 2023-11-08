@@ -145,11 +145,20 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 
 void Triangle_t::Init(GraphicsDevice_t* gpu)
 {
+	//
+	// Vertex data
+	//
+	std::vector<float> vertices = {
+		-0.5f, -0.5f, 0.0f,
+		0.5f, -0.5f, 0.0f,
+		0.0f, 0.5f, 0.0f
+	};
+
 	WGPUBufferDescriptor vertexBufferDesc = {
 		.nextInChain = nullptr,
 		.label = "Triangle Vertex Data Buffer",
 		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-		.size = 36,
+		.size = vertices.size() * sizeof(float),
 		.mappedAtCreation = false
 	};
 
@@ -168,19 +177,19 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 		.attributes = &vertexAttribute
 	};
 
-	std::vector<float> vertices = {
-		-0.5f, -0.5f, 0.0f,
-		0.5f, -0.5f, 0.0f,
-		0.0f, 0.5f, 0.0f
-	};
-
 	wgpuQueueWriteBuffer(gpu->Queue, VertexDataBuffer, 0, vertices.data(), vertexBufferDesc.size);
 
 	VertexCount = 3;
 	VertexDataSize = vertices.size();
 
+	//
+	// Shader
+	//
 	WGPUShaderModule shaderModule = CreateShader(gpu->Device);
 
+	//
+	// Pipeline
+	//
 	WGPUBlendState blendState = {
 		.color = {
 			.operation = WGPUBlendOperation_Add,
