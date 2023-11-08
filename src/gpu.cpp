@@ -223,7 +223,6 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Instance
 	//
 	Instance = CreateInstance();
-	std::cout << "Created instance: " << Instance << std::endl;
 
 	//
 	// Surface
@@ -235,7 +234,6 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	//
 	WGPURequestAdapterOptions adapterOpts = {};
 	Adapter = RequestAdapter(Instance, &adapterOpts);
-	std::cout << "Got adapter: " << Adapter << std::endl;
 
 	//
 	// Device
@@ -252,7 +250,6 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 		}
 	};
 	Device = RequestDevice(Adapter, &deviceDesc);
-	std::cout << "Got device: " << Device << std::endl;
 
 	//
 	// Error callback
@@ -263,6 +260,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 		if (message) std::cout << " (" << message << ")";
 		std::cout << std::endl;
 	};
+
 	wgpuDeviceSetUncapturedErrorCallback(Device, onDeviceError, nullptr);
 	wgpuDeviceSetDeviceLostCallback(Device, nullptr, nullptr); // Stop Dawn complaining
 
@@ -299,7 +297,12 @@ GraphicsDevice_t::~GraphicsDevice_t()
 void Graphics::OnRender(GraphicsDevice_t* gpu)
 {
 	WGPUTextureView nextTexture = wgpuSwapChainGetCurrentTextureView(gpu->SwapChain);
-	std::cout << "Next texture: " << nextTexture << std::endl;
+
+	if (!nextTexture)
+	{
+		std::cout << "Couldn't get next texture!" << std::endl;
+		assert(false);
+	}
 
 	//
 	// Create command encoder
