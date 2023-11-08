@@ -9,10 +9,15 @@ struct Triangle_t
 {
 private:
 	WGPURenderPipeline Pipeline									= nullptr;
+	WGPUBuffer VertexDataBuffer									= nullptr;
+	size_t VertexDataSize										= -1;
+	int VertexCount												= -1;
 
 public:
 	void Init(GraphicsDevice_t* gpu);
 	void Draw(WGPURenderPassEncoder renderPass);
+
+	~Triangle_t();
 };
 
 /*

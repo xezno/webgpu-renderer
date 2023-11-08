@@ -4,6 +4,7 @@
 #include <webgpu/webgpu.h>
 
 #include <cassert>
+#include <vector>
 #include <iostream>
 
 static Triangle_t* Triangle;
@@ -108,23 +109,13 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 		};
 		
 		@vertex
-		fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput
+		fn vs_main(@location(0) position: vec3f) -> VertexOutput
 		{
 			var out : VertexOutput;
 			
-			var p = vec2f(0.0, 0.0);
-			if (in_vertex_index == 0u) {
-				p = vec2f(-0.5, -0.5);
-				out.color = vec4f(1.0, 0.0, 0.0, 1.0);
-			} else if (in_vertex_index == 1u) {
-				p = vec2f(0.5, -0.5);
-				out.color = vec4f(0.0, 1.0, 0.0, 1.0);
-			} else {
-				p = vec2f(0.0, 0.5);
-				out.color = vec4f(0.0, 0.0, 1.0, 1.0);
-			}
-
-			out.position = vec4f(p, 0.0, 1.0);
+			out.color = vec4f(position.x, position.y, 0.5, 1.0);
+			out.position = vec4f(position, 1.0);
+			
 			return out;
 		}
 
@@ -154,6 +145,40 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 
 void Triangle_t::Init(GraphicsDevice_t* gpu)
 {
+	WGPUBufferDescriptor vertexBufferDesc = {
+		.nextInChain = nullptr,
+		.label = "Triangle Vertex Data Buffer",
+		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+		.size = 36,
+		.mappedAtCreation = false
+	};
+
+	VertexDataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &vertexBufferDesc);
+
+	WGPUVertexAttribute vertexAttribute = {
+		.format = WGPUVertexFormat_Float32x3,
+		.offset = 0,
+		.shaderLocation = 0,
+	};
+
+	WGPUVertexBufferLayout vertexBufferLayout = {
+		.arrayStride = 3 * sizeof(float),
+		.stepMode = WGPUVertexStepMode_Vertex,
+		.attributeCount = 1,
+		.attributes = &vertexAttribute
+	};
+
+	std::vector<float> vertices = {
+		-0.5f, -0.5f, 0.0f,
+		0.5f, -0.5f, 0.0f,
+		0.0f, 0.5f, 0.0f
+	};
+
+	wgpuQueueWriteBuffer(gpu->Queue, VertexDataBuffer, 0, vertices.data(), vertexBufferDesc.size);
+
+	VertexCount = 3;
+	VertexDataSize = vertices.size();
+
 	WGPUShaderModule shaderModule = CreateShader(gpu->Device);
 
 	WGPUBlendState blendState = {
@@ -184,8 +209,8 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 		.entryPoint = "vs_main",
 		.constantCount = 0,
 		.constants = nullptr,
-		.bufferCount = 0,
-		.buffers = 0
+		.bufferCount = 1,
+		.buffers = &vertexBufferLayout
 	};
 
 	WGPURenderPipelineDescriptor pipelineDesc = {
@@ -211,10 +236,17 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
 }
 
+Triangle_t::~Triangle_t()
+{
+	wgpuBufferDestroy(VertexDataBuffer);
+	wgpuBufferRelease(VertexDataBuffer);
+}
+
 void Triangle_t::Draw(WGPURenderPassEncoder renderPass)
 {
 	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
-	wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
+	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexDataBuffer, 0, VertexDataSize * sizeof(float));
+	wgpuRenderPassEncoderDraw(renderPass, VertexCount, 1, 0, 0);
 }
 
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
