@@ -3,6 +3,17 @@
 #include "webgpu/webgpu.h"
 
 class CWindow;
+struct GraphicsDevice_t;
+
+struct Triangle_t
+{
+private:
+	WGPURenderPipeline Pipeline									= nullptr;
+
+public:
+	void Init(GraphicsDevice_t* gpu);
+	void Draw(WGPURenderPassEncoder renderPass);
+};
 
 /*
  * Describes a rendering context/state

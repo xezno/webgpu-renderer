@@ -6,6 +6,8 @@
 #include <cassert>
 #include <iostream>
 
+static Triangle_t* Triangle;
+
 WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options)
 {
 	struct Data
@@ -96,6 +98,125 @@ WGPUSwapChain CreateSwapChain(WGPUDevice device, CWindow* window)
 	return swapChain;
 }
 
+WGPUShaderModule CreateShader(WGPUDevice device)
+{
+	// todo: move
+	const char* shaderSource = R"(
+		struct VertexOutput {
+			@builtin(position) position: vec4f,
+			@location(0) color: vec4f
+		};
+		
+		@vertex
+		fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput
+		{
+			var out : VertexOutput;
+			
+			var p = vec2f(0.0, 0.0);
+			if (in_vertex_index == 0u) {
+				p = vec2f(-0.5, -0.5);
+				out.color = vec4f(1.0, 0.0, 0.0, 1.0);
+			} else if (in_vertex_index == 1u) {
+				p = vec2f(0.5, -0.5);
+				out.color = vec4f(0.0, 1.0, 0.0, 1.0);
+			} else {
+				p = vec2f(0.0, 0.5);
+				out.color = vec4f(0.0, 0.0, 1.0, 1.0);
+			}
+
+			out.position = vec4f(p, 0.0, 1.0);
+			return out;
+		}
+
+		@fragment
+		fn fs_main(in: VertexOutput) -> @location(0) vec4f
+		{
+			return in.color;
+		}
+	)";
+
+	WGPUShaderModuleWGSLDescriptor shaderCodeDesc = {
+		.chain = {
+			.next = nullptr,
+			.sType = WGPUSType_ShaderModuleWGSLDescriptor
+		},
+		.code = shaderSource
+	};
+
+	WGPUShaderModuleDescriptor shaderDesc = {
+		.nextInChain = &shaderCodeDesc.chain
+	};
+
+	WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+	return shaderModule;
+}
+
+void Triangle_t::Init(GraphicsDevice_t* gpu)
+{
+	WGPUShaderModule shaderModule = CreateShader(gpu->Device);
+
+	WGPUBlendState blendState = {
+		.color = {
+			.operation = WGPUBlendOperation_Add,
+			.srcFactor = WGPUBlendFactor_SrcAlpha,
+			.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha
+		}
+	};
+
+	WGPUColorTargetState colorTarget = {
+		.format = WGPUTextureFormat_BGRA8Unorm,
+		.blend = &blendState,
+		.writeMask = WGPUColorWriteMask_All
+	};
+
+	WGPUFragmentState fragmentState = {
+		.module = shaderModule,
+		.entryPoint = "fs_main",
+		.constantCount = 0,
+		.constants = nullptr,
+		.targetCount = 1,
+		.targets = &colorTarget
+	};
+
+	WGPUVertexState vertexState = {
+		.module = shaderModule,
+		.entryPoint = "vs_main",
+		.constantCount = 0,
+		.constants = nullptr,
+		.bufferCount = 0,
+		.buffers = 0
+	};
+
+	WGPURenderPipelineDescriptor pipelineDesc = {
+		.nextInChain = nullptr,
+		.vertex = vertexState,
+
+		.primitive = {
+			.topology = WGPUPrimitiveTopology_TriangleList,
+			.stripIndexFormat = WGPUIndexFormat_Undefined,
+			.frontFace = WGPUFrontFace_CCW,
+			.cullMode = WGPUCullMode_None
+		},
+
+		.depthStencil = nullptr,
+		.multisample = {
+			.count = 1,
+			.mask = ~0u,
+			.alphaToCoverageEnabled = false
+		},
+		.fragment = &fragmentState,
+	};
+
+	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
+}
+
+void Triangle_t::Draw(WGPURenderPassEncoder renderPass)
+{
+	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
+	wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
+}
+
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 {
 	//
@@ -143,6 +264,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 		std::cout << std::endl;
 	};
 	wgpuDeviceSetUncapturedErrorCallback(Device, onDeviceError, nullptr);
+	wgpuDeviceSetDeviceLostCallback(Device, nullptr, nullptr); // Stop Dawn complaining
 
 	//
 	// Main command context
@@ -153,13 +275,23 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Swapchain
 	//
 	SwapChain = CreateSwapChain(Device, window);
+
+	//
+	// Triangle
+	//
+	Triangle = new Triangle_t();
+	Triangle->Init(this);
 }
 
-GraphicsDevice_t::~GraphicsDevice_t() {
+GraphicsDevice_t::~GraphicsDevice_t()
+{
+	delete Triangle;
+
 #define RELEASE(x) do { if(x) { wgpu##x##Release(x); x = nullptr; } } while(0)
 	RELEASE(Instance);
 	RELEASE(Adapter);
 	RELEASE(Device);
+	RELEASE(Queue);
 	RELEASE(SwapChain);
 #undef RELEASE
 }
@@ -188,7 +320,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 		.resolveTarget = nullptr,
 		.loadOp = WGPULoadOp_Clear,
 		.storeOp = WGPUStoreOp_Store,
-		.clearValue = WGPUColor{ 0.7, 0.4, 1.0, 1.0 }
+		.clearValue = WGPUColor{ 0.0, 0.0, 0.0, 1.0 }
 	};
 
 	WGPURenderPassDescriptor renderPassDesc = {
@@ -200,6 +332,9 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	};
 	
 	WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
+
+	Triangle->Draw(renderPass);
+
 	wgpuRenderPassEncoderEnd(renderPass);
 
 	//
