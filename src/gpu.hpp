@@ -9,6 +9,11 @@ struct Triangle_t
 {
 private:
 	WGPURenderPipeline Pipeline									= nullptr;
+
+	WGPUBuffer IndexDataBuffer									= nullptr;
+	size_t IndexDataSize										= -1;
+	int IndexCount												= -1;
+
 	WGPUBuffer VertexDataBuffer									= nullptr;
 	size_t VertexDataSize										= -1;
 	int VertexCount												= -1;

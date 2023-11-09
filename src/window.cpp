@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <glfw3webgpu.h>
+#include <cassert>
 
 CWindow::CWindow()
 {
@@ -27,18 +28,17 @@ void CWindow::Run()
 		//
 		// Render
 		//
-		if (FrameFunc)
-			FrameFunc(GraphicsDevice);
-		else
-			std::cout << "FrameFunc is null!" << std::endl;
+		assert(FrameFunc != nullptr);
+
+		FrameFunc(GraphicsDevice);
 	}
 }
 
 WGPUSurface CWindow::CreateSurface(WGPUInstance instance)
 {
-	if (Surface == nullptr)
-		Surface = glfwGetWGPUSurface(instance, Window);
+	assert(Surface == nullptr);
 
+	Surface = glfwGetWGPUSurface(instance, Window);
 	return Surface;
 }
 

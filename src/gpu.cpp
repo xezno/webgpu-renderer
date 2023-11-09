@@ -183,6 +183,27 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 	VertexDataSize = vertices.size();
 
 	//
+	// Index data
+	//
+	std::vector<unsigned int> indices = {
+		0, 1, 2
+	};
+
+	WGPUBufferDescriptor indexBufferDesc = {
+		.nextInChain = nullptr,
+		.label = "Triangle Index Data Buffer",
+		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index,
+		.size = indices.size() * sizeof(unsigned int),
+		.mappedAtCreation = false
+	};
+
+	IndexDataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &indexBufferDesc);
+	wgpuQueueWriteBuffer(gpu->Queue, IndexDataBuffer, 0, indices.data(), indexBufferDesc.size);
+
+	IndexCount = 3;
+	IndexDataSize = indices.size();
+
+	//
 	// Shader
 	//
 	WGPUShaderModule shaderModule = CreateShader(gpu->Device);
@@ -255,7 +276,9 @@ void Triangle_t::Draw(WGPURenderPassEncoder renderPass)
 {
 	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
 	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexDataBuffer, 0, VertexDataSize * sizeof(float));
-	wgpuRenderPassEncoderDraw(renderPass, VertexCount, 1, 0, 0);
+	wgpuRenderPassEncoderSetIndexBuffer(renderPass, IndexDataBuffer, WGPUIndexFormat_Uint32, 0, IndexDataSize * sizeof(unsigned int));
+
+	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexCount, 1, 0, 0, 0);
 }
 
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
