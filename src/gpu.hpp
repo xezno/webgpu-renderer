@@ -2,21 +2,29 @@
 
 #include "webgpu/webgpu.h"
 
+#include <vector>
+
 class CWindow;
 struct GraphicsDevice_t;
+
+/*
+ *
+ */
+struct GraphicsBuffer_t
+{
+	WGPUBuffer DataBuffer										= nullptr;
+	size_t DataSize												= SIZE_MAX;
+	int Count													= -1;
+
+	void Destroy();
+};
 
 struct Triangle_t
 {
 private:
 	WGPURenderPipeline Pipeline									= nullptr;
-
-	WGPUBuffer IndexDataBuffer									= nullptr;
-	size_t IndexDataSize										= -1;
-	int IndexCount												= -1;
-
-	WGPUBuffer VertexDataBuffer									= nullptr;
-	size_t VertexDataSize										= -1;
-	int VertexCount												= -1;
+	GraphicsBuffer_t IndexBuffer = {};
+	GraphicsBuffer_t VertexBuffer = {};
 
 public:
 	void Init(GraphicsDevice_t* gpu);
@@ -47,4 +55,7 @@ struct GraphicsDevice_t
 namespace Graphics
 {
 	void OnRender(GraphicsDevice_t* gpu);
+
+	GraphicsBuffer_t MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<float> vertexData, WGPUVertexBufferLayout** vertexBufferLayout);
+	GraphicsBuffer_t MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<unsigned int> indexData);
 }

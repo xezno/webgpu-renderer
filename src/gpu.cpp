@@ -18,16 +18,16 @@ WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions cons
 	} userData;
 
 	auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, char const* message, void* pUserData)
-	{
-		Data& userData = *(Data*)pUserData;
+		{
+			Data& userData = *(Data*)pUserData;
 
-		if (status == WGPURequestAdapterStatus_Success)
-			userData.adapter = adapter;
-		else
-			std::cout << "Could not get WebGPU adapter: " << message << std::endl;
+			if (status == WGPURequestAdapterStatus_Success)
+				userData.adapter = adapter;
+			else
+				std::cout << "Could not get WebGPU adapter: " << message << std::endl;
 
-		userData.requestEnded = true;
-	};
+			userData.requestEnded = true;
+		};
 
 	wgpuInstanceRequestAdapter(
 		instance,
@@ -49,16 +49,16 @@ WGPUDevice RequestDevice(WGPUAdapter adapter, WGPUDeviceDescriptor const* descri
 	} userData;
 
 	auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status, WGPUDevice device, char const* message, void* pUserData)
-	{
-		Data& userData = *(Data*)pUserData;
+		{
+			Data& userData = *(Data*)pUserData;
 
-		if (status == WGPURequestDeviceStatus_Success)
-			userData.device = device;
-		else
-			std::cout << "Could not get WebGPU device: " << message << std::endl;
+			if (status == WGPURequestDeviceStatus_Success)
+				userData.device = device;
+			else
+				std::cout << "Could not get WebGPU device: " << message << std::endl;
 
-		userData.requestEnded = true;
-	};
+			userData.requestEnded = true;
+		};
 
 	wgpuAdapterRequestDevice(adapter, descriptor, onDeviceRequestEnded, (void*)&userData);
 
@@ -154,33 +154,8 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 		0.0f, 0.5f, 0.0f
 	};
 
-	WGPUBufferDescriptor vertexBufferDesc = {
-		.nextInChain = nullptr,
-		.label = "Triangle Vertex Data Buffer",
-		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-		.size = vertices.size() * sizeof(float),
-		.mappedAtCreation = false
-	};
-
-	VertexDataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &vertexBufferDesc);
-
-	WGPUVertexAttribute vertexAttribute = {
-		.format = WGPUVertexFormat_Float32x3,
-		.offset = 0,
-		.shaderLocation = 0,
-	};
-
-	WGPUVertexBufferLayout vertexBufferLayout = {
-		.arrayStride = 3 * sizeof(float),
-		.stepMode = WGPUVertexStepMode_Vertex,
-		.attributeCount = 1,
-		.attributes = &vertexAttribute
-	};
-
-	wgpuQueueWriteBuffer(gpu->Queue, VertexDataBuffer, 0, vertices.data(), vertexBufferDesc.size);
-
-	VertexCount = 3;
-	VertexDataSize = vertices.size();
+	WGPUVertexBufferLayout* vertexBufferLayout;
+	VertexBuffer = Graphics::MakeVertexBuffer(gpu, vertices, &vertexBufferLayout);
 
 	//
 	// Index data
@@ -189,19 +164,7 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 		0, 1, 2
 	};
 
-	WGPUBufferDescriptor indexBufferDesc = {
-		.nextInChain = nullptr,
-		.label = "Triangle Index Data Buffer",
-		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index,
-		.size = indices.size() * sizeof(unsigned int),
-		.mappedAtCreation = false
-	};
-
-	IndexDataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &indexBufferDesc);
-	wgpuQueueWriteBuffer(gpu->Queue, IndexDataBuffer, 0, indices.data(), indexBufferDesc.size);
-
-	IndexCount = 3;
-	IndexDataSize = indices.size();
+	IndexBuffer = Graphics::MakeIndexBuffer(gpu, indices);
 
 	//
 	// Shader
@@ -240,7 +203,7 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 		.constantCount = 0,
 		.constants = nullptr,
 		.bufferCount = 1,
-		.buffers = &vertexBufferLayout
+		.buffers = vertexBufferLayout
 	};
 
 	WGPURenderPipelineDescriptor pipelineDesc = {
@@ -266,19 +229,19 @@ void Triangle_t::Init(GraphicsDevice_t* gpu)
 	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
 }
 
-Triangle_t::~Triangle_t()
-{
-	wgpuBufferDestroy(VertexDataBuffer);
-	wgpuBufferRelease(VertexDataBuffer);
-}
-
 void Triangle_t::Draw(WGPURenderPassEncoder renderPass)
 {
 	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
-	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexDataBuffer, 0, VertexDataSize * sizeof(float));
-	wgpuRenderPassEncoderSetIndexBuffer(renderPass, IndexDataBuffer, WGPUIndexFormat_Uint32, 0, IndexDataSize * sizeof(unsigned int));
+	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexBuffer.DataBuffer, 0, VertexBuffer.DataSize * sizeof(float));
+	wgpuRenderPassEncoderSetIndexBuffer(renderPass, IndexBuffer.DataBuffer, WGPUIndexFormat_Uint32, 0, IndexBuffer.DataSize * sizeof(unsigned int));
 
-	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexCount, 1, 0, 0, 0);
+	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexBuffer.Count, 1, 0, 0, 0);
+}
+
+Triangle_t::~Triangle_t()
+{
+	VertexBuffer.Destroy();
+	IndexBuffer.Destroy();
 }
 
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
@@ -319,11 +282,11 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Error callback
 	//
 	auto onDeviceError = [](WGPUErrorType type, char const* message, void* pUserData)
-	{
-		std::cout << "Uncaptured device error: type " << type;
-		if (message) std::cout << " (" << message << ")";
-		std::cout << std::endl;
-	};
+		{
+			std::cout << "Uncaptured device error: type " << type;
+			if (message) std::cout << " (" << message << ")";
+			std::cout << std::endl;
+		};
 
 	wgpuDeviceSetUncapturedErrorCallback(Device, onDeviceError, nullptr);
 	wgpuDeviceSetDeviceLostCallback(Device, nullptr, nullptr); // Stop Dawn complaining
@@ -332,7 +295,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Main command context
 	//
 	Queue = wgpuDeviceGetQueue(Device);
-	
+
 	//
 	// Swapchain
 	//
@@ -397,7 +360,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 		.depthStencilAttachment = nullptr,
 		.timestampWrites = nullptr
 	};
-	
+
 	WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
 
 	Triangle->Draw(renderPass);
@@ -424,4 +387,68 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	// Cleanup
 	//
 	wgpuTextureViewRelease(nextTexture);
+}
+
+GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<float> vertexData, WGPUVertexBufferLayout** outVertexBufferLayout)
+{
+	GraphicsBuffer_t vertexBuffer;
+
+	WGPUBufferDescriptor vertexBufferDesc = {
+		.nextInChain = nullptr,
+		.label = "Vertex Data Buffer",
+		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+		.size = vertexData.size() * sizeof(float),
+		.mappedAtCreation = false
+	};
+
+	vertexBuffer.DataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &vertexBufferDesc);
+
+	WGPUVertexAttribute* vertexAttribute = new WGPUVertexAttribute {
+		.format = WGPUVertexFormat_Float32x3,
+		.offset = 0,
+		.shaderLocation = 0,
+	};
+
+	WGPUVertexBufferLayout* vertexBufferLayout = new WGPUVertexBufferLayout {
+		.arrayStride = 3 * sizeof(float),
+		.stepMode = WGPUVertexStepMode_Vertex,
+		.attributeCount = 1,
+		.attributes = vertexAttribute
+	};
+
+	wgpuQueueWriteBuffer(gpu->Queue, vertexBuffer.DataBuffer, 0, vertexData.data(), vertexBufferDesc.size);
+
+	vertexBuffer.Count = 3;
+	vertexBuffer.DataSize = vertexData.size();
+
+	*outVertexBufferLayout = vertexBufferLayout;
+
+	return vertexBuffer;
+}
+
+GraphicsBuffer_t Graphics::MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<unsigned int> indexData)
+{
+	GraphicsBuffer_t indexBuffer;
+
+	WGPUBufferDescriptor indexBufferDesc = {
+		.nextInChain = nullptr,
+		.label = "Index Data Buffer",
+		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index,
+		.size = indexData.size() * sizeof(unsigned int),
+		.mappedAtCreation = false
+	};
+
+	indexBuffer.DataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &indexBufferDesc);
+	wgpuQueueWriteBuffer(gpu->Queue, indexBuffer.DataBuffer, 0, indexData.data(), indexBufferDesc.size);
+
+	indexBuffer.Count = 3;
+	indexBuffer.DataSize = indexData.size();
+
+	return indexBuffer;
+}
+
+void GraphicsBuffer_t::Destroy()
+{
+	wgpuBufferDestroy(DataBuffer);
+	wgpuBufferRelease(DataBuffer);
 }
