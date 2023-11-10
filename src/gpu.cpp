@@ -9,6 +9,19 @@
 #include <vector>
 #include <iostream>
 
+#define TINYGLTF_IMPLEMENTATION
+#define TINYGLTF_NO_INCLUDE_JSON
+#define TINYGLTF_NO_INCLUDE_STB_IMAGE
+#define TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+
+#include <json.hpp>
+#include <stb_image.h>
+#include <stb_image_write.h>
+#include <tiny_gltf.h>
+
 static Model_t* TestModel = {};
 
 WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options)
@@ -206,7 +219,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Model
 	//
 	TestModel = new Model_t();
-	TestModel->Init(this, "models/test.gltf");
+	TestModel->Init(this, "content/models/box.gltf");
 }
 
 GraphicsDevice_t::~GraphicsDevice_t()
@@ -433,22 +446,91 @@ void Mesh_t::Draw(WGPURenderPassEncoder renderPass)
 
 void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 {
-	// Temp - for testing - todo: load from gltf using tinygltf
+	tinygltf::Model model;
+	tinygltf::TinyGLTF loader;
 
-	std::vector<Vector3_t> tempVerts = {
-		{ -0.5f, -0.5f, 0.0f },
-		{ 0.5f, -0.5f, 0.0f },
-		{ 0.0f, 0.5f, 0.0f }
-	};
+	std::string err;
+	std::string warn;
 
-	std::vector<unsigned int> tempInd = {
-		0, 1, 2
-	};
+	// Check if filePath ends with .glb
+	std::string filePathStr = gltfPath;
+	std::string extension = filePathStr.substr(filePathStr.length() - 4, 4);
 
-	Mesh_t tempMesh;
-	tempMesh.Init(gpu, tempVerts, tempInd);
+	bool ret;
 
-	Meshes.push_back(tempMesh);
+	if (extension == ".glb")
+		ret = loader.LoadBinaryFromFile(&model, &err, &warn, gltfPath);
+	else
+		ret = loader.LoadASCIIFromFile(&model, &err, &warn, gltfPath);
+
+	if (!err.empty())
+	{
+		std::cout << "GLTF Error: " << err << std::endl;
+		return;
+	}
+
+	if (!warn.empty())
+	{
+		std::cout << "GLTF Warning: " << warn << std::endl;
+	}
+
+	if (!ret)
+	{
+		std::cout << "GLTF Error: " << err << std::endl;
+		return;
+	}
+
+	std::cout << "GLTF loaded: " << gltfPath << std::endl;
+
+	// Load all meshes
+	for (auto& mesh : model.meshes)
+	{
+		std::vector<Vector3_t> vertices = {};
+		std::vector<unsigned int> indices = {};
+
+		for (auto& primitive : mesh.primitives)
+		{
+			// Load indices
+			{
+				auto& accessor = model.accessors[primitive.indices];
+				auto& bufferView = model.bufferViews[accessor.bufferView];
+				auto& buffer = model.buffers[bufferView.buffer];
+
+				auto& data = buffer.data[accessor.byteOffset + bufferView.byteOffset];
+
+				for (int i = 0; i < accessor.count; ++i) {
+					unsigned int index = 0;
+
+					// GLTF stores indices as uint16 - this line is correct!
+					memcpy(&index, &buffer.data[accessor.byteOffset + bufferView.byteOffset + i * sizeof(uint16_t)], sizeof(uint16_t));
+
+					indices.emplace_back(index);
+				}
+			}
+
+			// Load vertices
+			{
+				auto& accessor = model.accessors[primitive.attributes["POSITION"]];
+				auto& bufferView = model.bufferViews[accessor.bufferView];
+				auto& buffer = model.buffers[bufferView.buffer];
+
+				auto& data = buffer.data[accessor.byteOffset + bufferView.byteOffset];
+
+				for (int i = 0; i < accessor.count; ++i)
+				{
+					Vector3_t vert = {};
+
+					memcpy(&vert, &buffer.data[accessor.byteOffset + bufferView.byteOffset + i * sizeof(Vector3_t)], sizeof(Vector3_t));
+
+					vertices.emplace_back(vert);
+				}
+			}
+
+			Mesh_t newMesh;
+			newMesh.Init(gpu, vertices, indices);
+			Meshes.push_back(newMesh);
+		}
+	}
 }
 
 void Model_t::Draw(WGPURenderPassEncoder renderPass)
