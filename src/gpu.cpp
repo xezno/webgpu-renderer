@@ -1,9 +1,8 @@
 #include "gpu.hpp"
 #include "window.hpp"
 
-#include "math/vector3.hpp"
-
 #include <webgpu/webgpu.h>
+#include <glm/glm.hpp>
 
 #include <cassert>
 #include <vector>
@@ -303,7 +302,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	wgpuTextureViewRelease(nextTexture);
 }
 
-GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<Vector3_t> vertexData, WGPUVertexBufferLayout** outVertexBufferLayout)
+GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertexData, WGPUVertexBufferLayout** outVertexBufferLayout)
 {
 	GraphicsBuffer_t vertexBuffer;
 
@@ -311,7 +310,7 @@ GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<V
 		.nextInChain = nullptr,
 		.label = "Vertex Data Buffer",
 		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-		.size = vertexData.size() * sizeof(Vector3_t),
+		.size = vertexData.size() * sizeof(glm::vec3),
 		.mappedAtCreation = false
 	};
 
@@ -498,7 +497,8 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 
 				auto& data = buffer.data[accessor.byteOffset + bufferView.byteOffset];
 
-				for (int i = 0; i < accessor.count; ++i) {
+				for (int i = 0; i < accessor.count; ++i)
+				{
 					unsigned int index = 0;
 
 					// GLTF stores indices as uint16 - this line is correct!
@@ -518,9 +518,9 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 
 				for (int i = 0; i < accessor.count; ++i)
 				{
-					Vector3_t vert = {};
+					glm::vec3 vert = {};
 
-					memcpy(&vert, &buffer.data[accessor.byteOffset + bufferView.byteOffset + i * sizeof(Vector3_t)], sizeof(Vector3_t));
+					memcpy(&vert, &buffer.data[accessor.byteOffset + bufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
 
 					vertices.emplace_back(vert);
 				}

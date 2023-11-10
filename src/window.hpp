@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/point2.hpp"
+#include <glm/glm.hpp>
 
 #include <webgpu/webgpu.h>
 #include <string>
@@ -42,10 +42,10 @@ private:
 
 public:
 	// Retrieve the window size
-	Point2_t GetSize()											{ return Point2_t{ Width, Height }; }
+	glm::ivec2 GetSize()										{ return glm::ivec2{ Width, Height }; }
 
 	// Set the window size
-	void SetSize(Point2_t size)									{ Width = size.x; Height = size.y; }
+	void SetSize(glm::ivec2 size)								{ Width = size.x; Height = size.y; }
 
 	// Set the window size
 	void SetSize(int width, int height)							{ Width = width; Height = height; }
