@@ -10,6 +10,8 @@ add_subdirectory(thirdparty/glfw3webgpu)            # glfw3webgpu
 add_subdirectory(thirdparty/tinygltf)               # tinygltf
 add_subdirectory(thirdparty/glm)                    # glm
 
+include_directories(thirdparty/stb)                 # stb (header-only)
+
 # Glob src/
 file(GLOB_RECURSE SOURCE_FILES src/*.cpp src/*.h)
 
