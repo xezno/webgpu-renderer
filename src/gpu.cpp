@@ -123,8 +123,8 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 		};
 
 		@group(0) @binding(0) var<uniform> uConstants: UniformBuffer;
-		@group(0) @binding(1) var colorTexture: texture_2d<f32>;
-		@group(0) @binding(2) var colorSampler: sampler;
+		@group(0) @binding(1) var mainSampler: sampler;
+		@group(0) @binding(2) var colorTexture: texture_2d<f32>;
 
 		const lightDirection: vec3f = normalize(vec3f(-1.0, 1.0, 0.0));
 
@@ -156,7 +156,7 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 			let diffuse: f32 = max(dot(N, L), 0.0);
 			let ambient: f32 = 0.1f;
 			
-			let textureColor: vec4f = textureSample(colorTexture, colorSampler, in.uv);
+			let textureColor: vec4f = textureSample(colorTexture, mainSampler, in.uv);
 			let shadedColor: vec3f = textureColor.rgb * (diffuse + ambient);
 			
 			return vec4f(shadedColor, 1.0);
@@ -597,36 +597,36 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::ve
 	};
 
 	//
+	// Sampler
+	//
+	WGPUBindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[1];
+	samplerBindingLayout.binding = 1;
+	samplerBindingLayout.visibility = WGPUShaderStage_Fragment;
+	samplerBindingLayout.sampler.type = WGPUSamplerBindingType_Filtering;
+
+	WGPUBindGroupEntry samplerBinding = {
+		.nextInChain = nullptr,
+		.binding = 1,
+		.sampler = ColorTexture.Sampler
+	};
+
+	//
 	// Color texture binding
 	//
-	WGPUBindGroupLayoutEntry& fragmentBindingLayout = bindingLayoutEntries[1];
+	WGPUBindGroupLayoutEntry& fragmentBindingLayout = bindingLayoutEntries[2];
 	SetDefaultBindGroupLayoutEntry(fragmentBindingLayout);
-	fragmentBindingLayout.binding = 1;
+	fragmentBindingLayout.binding = 2;
 	fragmentBindingLayout.visibility = WGPUShaderStage_Fragment;
 	fragmentBindingLayout.texture.sampleType = WGPUTextureSampleType_Float;
 	fragmentBindingLayout.texture.viewDimension = WGPUTextureViewDimension_2D;
 
 	WGPUBindGroupEntry textureBinding = {
 		.nextInChain = nullptr,
-		.binding = 1,
+		.binding = 2,
 		.textureView = ColorTexture.TextureView
 	};
 
-	//
-	// Sampler
-	//
-	WGPUBindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
-	samplerBindingLayout.binding = 2;
-	samplerBindingLayout.visibility = WGPUShaderStage_Fragment;
-	samplerBindingLayout.sampler.type = WGPUSamplerBindingType_Filtering;
-
-	WGPUBindGroupEntry samplerBinding = {
-		.nextInChain = nullptr,
-		.binding = 2,
-		.sampler = ColorTexture.Sampler
-	};
-
-	std::vector<WGPUBindGroupEntry> bindings = { uniformBinding, textureBinding, samplerBinding };
+	std::vector<WGPUBindGroupEntry> bindings = { uniformBinding, samplerBinding, textureBinding };
 
 	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc = {
 		.nextInChain = nullptr,
