@@ -946,8 +946,6 @@ void Mesh_t::Destroy()
 
 void Texture_t::LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data, int width, int height, int channels)
 {
-	std::cout << "Texture has " << channels << " channels" << std::endl;
-
 	WGPUTextureDescriptor textureDesc = {
 		.nextInChain = nullptr,
 		.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
@@ -973,7 +971,7 @@ void Texture_t::LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data,
 
 	WGPUTextureDataLayout source = {
 		.offset = 0,
-		.bytesPerRow = (unsigned int)(4 * width),
+		.bytesPerRow = (unsigned int)(channels * width),
 		.rowsPerImage = (unsigned int)height
 	};
 
