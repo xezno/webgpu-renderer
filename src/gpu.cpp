@@ -119,30 +119,41 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 	const char* shaderSource = R"(
 		struct UniformBuffer {
 			modelMatrix: mat4x4f,
-			viewProjMatrix: mat4x4f
+			viewProjMatrix: mat4x4f,
+			cameraPosition: vec3f
 		};
 
 		@group(0) @binding(0) var<uniform> uConstants: UniformBuffer;
 		@group(0) @binding(1) var mainSampler: sampler;
-		@group(0) @binding(2) var colorTexture: texture_2d<f32>;
 
-		const lightDirection: vec3f = normalize(vec3f(-1.0, 1.0, 0.0));
+		@group(0) @binding(2) var colorTexture: texture_2d<f32>;
+		@group(0) @binding(3) var aoTexture: texture_2d<f32>;
+		@group(0) @binding(4) var emissiveTexture: texture_2d<f32>;
+		@group(0) @binding(5) var metalRoughnessTexture: texture_2d<f32>;
+		@group(0) @binding(6) var normalTexture: texture_2d<f32>;
+
+		const lightPosition: vec3f = vec3f(0.0, 5.0, 1.0);
 
 		struct VertexOutput {
 			@builtin(position) position: vec4f,
 			@location(0) uv: vec2f,
-			@location(1) normal: vec3f
+			@location(1) normal: vec3f,
+			@location(2) tangent: vec3f,
+			@location(3) bitangent: vec3f,
+			@location(4) fragPos : vec3f
 		};
 		
 		@vertex
-		fn vs_main(@location(0) position: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3f) -> VertexOutput
+		fn vs_main(@location(0) position: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3f, @location(3) tangent: vec3f) -> VertexOutput
 		{
 			var out : VertexOutput;
 			out.position = uConstants.viewProjMatrix * uConstants.modelMatrix * vec4f(position, 1.0);
-			out.uv = uv;
+			out.uv = uv * vec2f(1, 1);
 
-		    // out.normal = normalize((uConstants.normalMatrix * vec4f(normal, 0.0)).xyz); // Transform the normal
 			out.normal = normal;
+			out.tangent = tangent;
+			out.bitangent = cross(normal, tangent);
+			out.fragPos = (uConstants.modelMatrix * vec4f(position, 1.0)).xyz;
 
 			return out;
 		}
@@ -150,15 +161,40 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 		@fragment
 		fn fs_main(in: VertexOutput) -> @location(0) vec4f
 		{
-			let N: vec3f = normalize(in.normal); // Normalized normal vector
-			let L: vec3f = normalize(lightDirection); // Normalized light direction
-			
-			let diffuse: f32 = max(dot(N, L), 0.0);
+			let normalMap: vec3f = textureSample(normalTexture, mainSampler, in.uv).rgb;
+			let tangentNormal: vec3f = normalMap * 2.0 - 1.0;
+
+			let T = normalize(in.tangent);
+			let B = normalize(in.bitangent);
+			let N = normalize(in.normal);
+			let TBN = mat3x3f(T, B, N); // Tangent, Bitangent, Normal matrix
+			let worldNormal: vec3f = normalize(TBN * tangentNormal);
+
+			let L: vec3f = normalize(lightPosition - in.fragPos);
+		    let V: vec3f = normalize(uConstants.cameraPosition - in.fragPos);
+			let H: vec3f = normalize(L + V);
+	
+			let diffuse: f32 = max(dot(worldNormal, L), 0.0);
 			let ambient: f32 = 0.1f;
 			
 			let textureColor: vec4f = textureSample(colorTexture, mainSampler, in.uv);
-			let shadedColor: vec3f = textureColor.rgb * (diffuse + ambient);
+			let emissiveColor: vec4f = textureSample(emissiveTexture, mainSampler, in.uv);
+			let aoColor: vec4f = textureSample(aoTexture, mainSampler, in.uv);
+			let metalRoughness: vec4f = textureSample(metalRoughnessTexture, mainSampler, in.uv);
+			let metalness: f32 = metalRoughness.b;
+			let roughness: f32 = metalRoughness.g;
+
+			var shadedColor: vec3f = textureColor.rgb * (diffuse + ambient);
+			shadedColor += emissiveColor.rgb;
+			shadedColor *= aoColor.r;
+
+			// Specular highlights (Blinn-Phong model)
+			let shininess: f32 = pow(2.0, (1.0 - roughness) * 10.0);
+			let specularIntensity: f32 = pow(max(dot(worldNormal, H), 0.0), shininess);
+			let specularColor: vec3f = vec3f(1.0, 1.0, 1.0) * specularIntensity;
+			shadedColor += specularColor;
 			
+			let linearColor = pow(shadedColor, vec3f(2.2));
 			return vec4f(shadedColor, 1.0);
 		}
 	)";
@@ -198,6 +234,17 @@ void SetDefaultBindGroupLayoutEntry(WGPUBindGroupLayoutEntry& bindingLayout)
 	bindingLayout.texture.multisampled = false;
 	bindingLayout.texture.sampleType = WGPUTextureSampleType_Undefined;
 	bindingLayout.texture.viewDimension = WGPUTextureViewDimension_Undefined;
+}
+
+WGPUBindGroupEntry CreateTextureBindGroupEntry(Texture_t& texture, unsigned int binding)
+{
+	WGPUBindGroupEntry textureBinding = {
+		.nextInChain = nullptr,
+		.binding = binding,
+		.textureView = texture.TextureView
+	};
+	
+	return WGPUBindGroupEntry(textureBinding);
 }
 
 void SetDefaultStencilFaceState(WGPUStencilFaceState& stencilFaceState)
@@ -312,7 +359,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Model
 	//
 	Model = new Model_t();
-	Model->Init(this, "content/models/suzanne.gltf");
+	Model->Init(this, "content/models/DamagedHelmet/DamagedHelmet.gltf");
 
 	Camera = new Camera_t();
 	Camera->Transform = *Transform_t::MakeDefault();
@@ -343,9 +390,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	float d = Frame / 144.0f; // lol
 
 	Camera->Transform.SetPosition(glm::vec3(
-		glm::sin(d) * 4.0f,
-		glm::cos(d) * 4.0f,
-		(glm::cos(d) * 4.0f) + 4.0f
+		-3.0f, -3.0f, 0
 	));
 
 	WGPUTextureView nextTexture = wgpuSwapChainGetCurrentTextureView(gpu->SwapChain);
@@ -500,12 +545,10 @@ void GraphicsBuffer_t::Destroy()
 	wgpuBufferRelease(DataBuffer);
 }
 
-void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::vector<unsigned int> indices, Texture_t colorTexture)
+void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::vector<unsigned int> indices, Material_t material)
 {
-	ColorTexture = colorTexture;
+	Material = material;
 	UniformBuffer = Graphics::MakeUniformBuffer(gpu);
-
-	assert(colorTexture.Texture != nullptr);
 
 	// Vertices
 	WGPUVertexAttribute vertexAttribute = {
@@ -526,7 +569,13 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::ve
 		.shaderLocation = 2,
 	};
 
-	std::vector<WGPUVertexAttribute> vertexAttributes = { vertexAttribute, uvAttribute, normalAttribute };
+	WGPUVertexAttribute tangentAttribute = {
+		.format = WGPUVertexFormat_Float32x3,
+		.offset = sizeof(glm::vec3) + sizeof(glm::vec2) + sizeof(glm::vec3),
+		.shaderLocation = 3,
+	};
+
+	std::vector<WGPUVertexAttribute> vertexAttributes = { vertexAttribute, uvAttribute, normalAttribute, tangentAttribute };
 
 	WGPUVertexBufferLayout vertexBufferLayout = {
 		.arrayStride = sizeof(Vertex_t),
@@ -576,7 +625,7 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::ve
 		.buffers = &vertexBufferLayout
 	};
 
-	std::vector<WGPUBindGroupLayoutEntry> bindingLayoutEntries(3);
+	std::vector<WGPUBindGroupLayoutEntry> bindingLayoutEntries(7);
 
 	//
 	// Uniform binding
@@ -584,7 +633,7 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::ve
 	WGPUBindGroupLayoutEntry& vertexBindingLayout = bindingLayoutEntries[0];
 	SetDefaultBindGroupLayoutEntry(vertexBindingLayout);
 	vertexBindingLayout.binding = 0;
-	vertexBindingLayout.visibility = WGPUShaderStage_Vertex;
+	vertexBindingLayout.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
 	vertexBindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
 	vertexBindingLayout.buffer.minBindingSize = sizeof(UniformBuffer_t);
 
@@ -607,26 +656,35 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::ve
 	WGPUBindGroupEntry samplerBinding = {
 		.nextInChain = nullptr,
 		.binding = 1,
-		.sampler = ColorTexture.Sampler
+		.sampler = material.Sampler
 	};
 
 	//
-	// Color texture binding
+	// Texture binding
 	//
-	WGPUBindGroupLayoutEntry& fragmentBindingLayout = bindingLayoutEntries[2];
-	SetDefaultBindGroupLayoutEntry(fragmentBindingLayout);
-	fragmentBindingLayout.binding = 2;
-	fragmentBindingLayout.visibility = WGPUShaderStage_Fragment;
-	fragmentBindingLayout.texture.sampleType = WGPUTextureSampleType_Float;
-	fragmentBindingLayout.texture.viewDimension = WGPUTextureViewDimension_2D;
+	WGPUBindGroupEntry colorTextureBinding				= CreateTextureBindGroupEntry(material.ColorTexture, 2);
+	WGPUBindGroupEntry aoTextureBinding					= CreateTextureBindGroupEntry(material.AoTexture, 3);
+	WGPUBindGroupEntry emissiveTextureBinding			= CreateTextureBindGroupEntry(material.EmissiveTexture, 4);
+	WGPUBindGroupEntry metalRoughnessTextureBinding		= CreateTextureBindGroupEntry(material.MetalRoughnessTexture, 5);
+	WGPUBindGroupEntry normalTextureBinding				= CreateTextureBindGroupEntry(material.NormalTexture, 6);
 
-	WGPUBindGroupEntry textureBinding = {
-		.nextInChain = nullptr,
-		.binding = 2,
-		.textureView = ColorTexture.TextureView
+	for (int i = 2; i <= 6; ++i)
+	{
+		WGPUBindGroupLayoutEntry& fragmentBindingLayout = bindingLayoutEntries[i];
+		SetDefaultBindGroupLayoutEntry(fragmentBindingLayout);
+		fragmentBindingLayout.binding = i;
+		fragmentBindingLayout.visibility = WGPUShaderStage_Fragment;
+		fragmentBindingLayout.texture.sampleType = WGPUTextureSampleType_Float;
+		fragmentBindingLayout.texture.viewDimension = WGPUTextureViewDimension_2D;
+	}
+
+	std::vector<WGPUBindGroupEntry> bindings = { 
+		// Misc.
+		uniformBinding, samplerBinding,
+
+		// Material
+		colorTextureBinding, aoTextureBinding, emissiveTextureBinding, metalRoughnessTextureBinding, normalTextureBinding 
 	};
-
-	std::vector<WGPUBindGroupEntry> bindings = { uniformBinding, samplerBinding, textureBinding };
 
 	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc = {
 		.nextInChain = nullptr,
@@ -690,6 +748,7 @@ void Mesh_t::Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass)
 	UniformBuffer_t uniformBufferData;
 	uniformBufferData.ModelMatrix = GetModelMatrix();
 	uniformBufferData.ViewProjMatrix = Camera->GetViewProjMatrix();
+	uniformBufferData.CameraPosition = Camera->Transform.GetPosition();
 	Graphics::UpdateUniformBuffer(gpu, UniformBuffer, uniformBufferData);
 
 	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
@@ -698,6 +757,28 @@ void Mesh_t::Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass)
 	wgpuRenderPassEncoderSetBindGroup(renderPass, 0, BindGroup, 0, nullptr);
 
 	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexBuffer.Count, 1, 0, 0, 0);
+}
+
+inline void LoadTextureIfAvailable(GraphicsDevice_t* gpu, const tinygltf::Model& model, const tinygltf::TextureInfo& textureInfo, Texture_t& texture)
+{
+	if (textureInfo.index >= 0)
+	{
+		const tinygltf::Texture& gltfTexture = model.textures[textureInfo.index];
+		auto& image = model.images[gltfTexture.source];
+
+		// Directly load texture from memory
+		texture.LoadFromMemory(gpu, image.image.data(), image.width, image.height, image.component);
+	}
+}
+
+inline void LoadTextureIfAvailable(GraphicsDevice_t* gpu, const tinygltf::Model& model, const tinygltf::OcclusionTextureInfo& textureInfo, Texture_t& texture)
+{
+	LoadTextureIfAvailable(gpu, model, (const tinygltf::TextureInfo&)textureInfo, texture);
+}
+
+inline void LoadTextureIfAvailable(GraphicsDevice_t* gpu, const tinygltf::Model& model, const tinygltf::NormalTextureInfo& textureInfo, Texture_t& texture)
+{
+	LoadTextureIfAvailable(gpu, model, (const tinygltf::TextureInfo&)textureInfo, texture);
 }
 
 void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
@@ -779,6 +860,10 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 				auto& normBufferView = model.bufferViews[normAccessor.bufferView];
 				auto& normBuffer = model.buffers[normBufferView.buffer];
 
+				auto& tangAccessor = model.accessors[primitive.attributes["TANGENT"]];
+				auto& tangBufferView = model.bufferViews[tangAccessor.bufferView];
+				auto& tangBuffer = model.buffers[tangBufferView.buffer];
+
 				for (int i = 0; i < posAccessor.count; ++i)
 				{
 					Vertex_t vertex = {};
@@ -787,39 +872,51 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 					memcpy(&vertex.Position, &posBuffer.data[posAccessor.byteOffset + posBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
 
 					// Load UVs
-					if (primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end())
-						memcpy(&vertex.TexCoords, &uvBuffer.data[uvAccessor.byteOffset + uvBufferView.byteOffset + i * sizeof(glm::vec2)], sizeof(glm::vec2));
-					else
-						vertex.TexCoords = glm::vec2(0.0f, 0.0f); // Default UVs if not present
+					assert(primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end());
+					memcpy(&vertex.TexCoords, &uvBuffer.data[uvAccessor.byteOffset + uvBufferView.byteOffset + i * sizeof(glm::vec2)], sizeof(glm::vec2));
 
 					// Load normals
-					if (primitive.attributes.find("NORMAL") != primitive.attributes.end())
-						memcpy(&vertex.Normal, &posBuffer.data[normAccessor.byteOffset + normBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
-					else
-						vertex.Normal = glm::vec3(0, 0, 0); // Default normals if not present
+					assert(primitive.attributes.find("NORMAL") != primitive.attributes.end());
+					memcpy(&vertex.Normal, &posBuffer.data[normAccessor.byteOffset + normBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
+
+					// Load normals
+					assert(primitive.attributes.find("TANGENT") != primitive.attributes.end());
+					memcpy(&vertex.Tangent, &posBuffer.data[tangAccessor.byteOffset + tangBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
 
 					vertices.emplace_back(vertex);
 				}
 			}
 
-			Texture_t texture;
+			Material_t material;
+
+			WGPUSamplerDescriptor samplerDesc = {
+				.addressModeU = WGPUAddressMode_Repeat,
+				.addressModeV = WGPUAddressMode_Repeat,
+				.addressModeW = WGPUAddressMode_Repeat,
+				.magFilter = WGPUFilterMode_Linear,
+				.minFilter = WGPUFilterMode_Linear,
+				.mipmapFilter = WGPUMipmapFilterMode_Linear,
+				.lodMinClamp = 0.0f,
+				.lodMaxClamp = 1.0f,
+				.compare = WGPUCompareFunction_Undefined,
+				.maxAnisotropy = 1
+			};
+
+			material.Sampler = wgpuDeviceCreateSampler(gpu->Device, &samplerDesc);
 
 			if (primitive.material >= 0)
 			{
-				const tinygltf::Material& material = model.materials[primitive.material];
+				const tinygltf::Material& gltfMaterial = model.materials[primitive.material];
 
-				if (material.pbrMetallicRoughness.baseColorTexture.index >= 0)
-				{
-					const tinygltf::Texture& gltfTexture = model.textures[material.pbrMetallicRoughness.baseColorTexture.index];
-					auto& image = model.images[gltfTexture.source];
-
-					// Directly load texture from memory
-					texture.LoadFromMemory(gpu, image.image.data(), image.width, image.height, image.component);
-				}
+				LoadTextureIfAvailable(gpu, model, gltfMaterial.pbrMetallicRoughness.baseColorTexture, material.ColorTexture);
+				LoadTextureIfAvailable(gpu, model, gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture, material.MetalRoughnessTexture);
+				LoadTextureIfAvailable(gpu, model, gltfMaterial.emissiveTexture, material.EmissiveTexture);
+				LoadTextureIfAvailable(gpu, model, gltfMaterial.occlusionTexture, material.AoTexture);
+				LoadTextureIfAvailable(gpu, model, gltfMaterial.normalTexture, material.NormalTexture);
 			}
 
 			Mesh_t newMesh;
-			newMesh.Init(gpu, vertices, indices, texture);
+			newMesh.Init(gpu, vertices, indices, material);
 			Meshes.push_back(newMesh);
 		}
 	}
@@ -849,12 +946,14 @@ void Mesh_t::Destroy()
 
 void Texture_t::LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data, int width, int height, int channels)
 {
+	std::cout << "Texture has " << channels << " channels" << std::endl;
+
 	WGPUTextureDescriptor textureDesc = {
 		.nextInChain = nullptr,
 		.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
 		.dimension = WGPUTextureDimension_2D,
 		.size = { (unsigned int)width, (unsigned int)height, 1 },
-		.format = WGPUTextureFormat_RGBA8Snorm,
+		.format = WGPUTextureFormat_RGBA8Unorm,
 
 		.mipLevelCount = 1,
 		.sampleCount = 1,
@@ -892,19 +991,4 @@ void Texture_t::LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data,
 	};
 
 	TextureView = wgpuTextureCreateView(Texture, &textureViewDesc);
-
-	WGPUSamplerDescriptor samplerDesc = {
-		.addressModeU = WGPUAddressMode_ClampToEdge,
-		.addressModeV = WGPUAddressMode_ClampToEdge,
-		.addressModeW = WGPUAddressMode_ClampToEdge,
-		.magFilter = WGPUFilterMode_Linear,
-		.minFilter = WGPUFilterMode_Linear,
-		.mipmapFilter = WGPUMipmapFilterMode_Linear,
-		.lodMinClamp = 0.0f,
-		.lodMaxClamp = 1.0f,
-		.compare = WGPUCompareFunction_Undefined,
-		.maxAnisotropy = 1
-	};
-
-	Sampler = wgpuDeviceCreateSampler(gpu->Device, &samplerDesc);
 }

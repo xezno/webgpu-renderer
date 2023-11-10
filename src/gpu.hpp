@@ -20,6 +20,7 @@ struct Vertex_t
 	glm::vec3 Position											= {};
 	glm::vec2 TexCoords											= {};
 	glm::vec3 Normal											= {};
+	glm::vec3 Tangent											= {};
 };
 
 /*
@@ -57,14 +58,14 @@ struct Camera_t
 {
 	Transform_t Transform										= {};
 
-	float FieldOfView											= 50.0f;
+	float FieldOfView											= 40.0f;
 	float ZNear													= 0.1f;
 	float ZFar													= 100.0f;
 	float Aspect												= 16.0f / 9.0f;
 
 	inline glm::mat4 GetViewProjMatrix()
 	{
-		glm::mat4 view = glm::lookAt(Transform.GetPosition(), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0));
+		glm::mat4 view = glm::lookAt(Transform.GetPosition(), glm::vec3(0, 0, 0), glm::vec3(0, 0, -1));
 		glm::mat4 projection = glm::perspective(glm::radians(FieldOfView), Aspect, ZNear, ZFar);
 
 		return projection * view;
@@ -90,9 +91,19 @@ struct Texture_t
 {
 	WGPUTexture Texture											= nullptr;
 	WGPUTextureView TextureView									= nullptr;
-	WGPUSampler Sampler											= nullptr;
 
 	void LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data, int width, int height, int channels);
+};
+
+struct Material_t
+{
+	Texture_t ColorTexture										= {};
+	Texture_t AoTexture											= {};
+	Texture_t EmissiveTexture									= {};
+	Texture_t MetalRoughnessTexture								= {};
+	Texture_t NormalTexture										= {};
+
+	WGPUSampler Sampler											= nullptr;
 };
 
 /*
@@ -110,9 +121,9 @@ private:
 	Transform_t Transform										= {};
 	GraphicsBuffer_t UniformBuffer								= {};
 
-	Texture_t ColorTexture										= {};
+	Material_t Material											= {};
 
-	void Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::vector<unsigned int> indices, Texture_t colorTexture);
+	void Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::vector<unsigned int> indices, Material_t material);
 	void Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass);
 
 	inline glm::mat4 GetModelMatrix()
@@ -168,6 +179,8 @@ struct UniformBuffer_t
 {
 	glm::mat4 ModelMatrix										= {};
 	glm::mat4 ViewProjMatrix									= {};
+	glm::vec3 CameraPosition									= {};
+	float unused												= -1.0f;
 };
 
 /*
