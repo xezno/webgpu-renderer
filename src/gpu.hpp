@@ -76,6 +76,17 @@ struct GraphicsBuffer_t
 /*
  *
  */
+struct Texture_t
+{
+	WGPUTexture Texture											= nullptr;
+	WGPUTextureView TextureView									= nullptr;
+
+	void LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data, int width, int height, int channels);
+};
+
+/*
+ *
+ */
 struct Mesh_t
 {
 private:
@@ -88,7 +99,9 @@ private:
 	Transform_t Transform										= {};
 	GraphicsBuffer_t UniformBuffer								= {};
 
-	void Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices);
+	Texture_t ColorTexture										= {};
+
+	void Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices, Texture_t colorTexture);
 	void Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass);
 
 	inline glm::mat4 GetModelMatrix()

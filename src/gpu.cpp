@@ -57,6 +57,8 @@ WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions cons
 WGPUDevice RequestDevice(WGPUAdapter adapter, WGPUDeviceDescriptor const* descriptor)
 {
 	struct Data
+
+
 	{
 		WGPUDevice device = nullptr;
 		bool requestEnded = false;
@@ -92,7 +94,7 @@ WGPUInstance CreateInstance()
 		std::cout << "Failed to create instance" << std::endl;
 		return nullptr;
 	}
-
+	
 	return instance;
 }
 
@@ -123,27 +125,24 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 		};
 
 		@group(0) @binding(0) var<uniform> uConstants : UniformBuffer;
+		@group(0) @binding(1) var colorTexture : texture_2d<f32>;
 
 		struct VertexOutput {
-			@builtin(position) position: vec4f,
-			@location(0) color: vec4f
+			@builtin(position) position: vec4f
 		};
 		
 		@vertex
 		fn vs_main(@location(0) position: vec3f) -> VertexOutput
 		{
 			var out : VertexOutput;
-			
-			out.color = vec4f(position.x, position.y, 0.5, 1.0);
 			out.position = uConstants.viewProjMatrix * uConstants.modelMatrix * vec4f(position, 1.0);
-			
 			return out;
 		}
 
 		@fragment
 		fn fs_main(in: VertexOutput) -> @location(0) vec4f
 		{
-			return in.color;
+			return vec4f( textureLoad(colorTexture, vec2i(in.position.xy), 0).rgb, 1.0 );
 		}
 	)";
 
@@ -499,8 +498,9 @@ void GraphicsBuffer_t::Destroy()
 	wgpuBufferRelease(DataBuffer);
 }
 
-void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices)
+void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices, Texture_t colorTexture)
 {
+	ColorTexture = colorTexture;
 	UniformBuffer = Graphics::MakeUniformBuffer(gpu);
 
 	// Vertices
@@ -546,17 +546,48 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 		.buffers = vertexBufferLayout
 	};
 
-	WGPUBindGroupLayoutEntry bindingLayout = {};
-	SetDefaultBindGroupLayoutEntry(bindingLayout);
-	bindingLayout.binding = 0;
-	bindingLayout.visibility = WGPUShaderStage_Vertex;
-	bindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
-	bindingLayout.buffer.minBindingSize = sizeof(UniformBuffer_t);
+	std::vector<WGPUBindGroupLayoutEntry> bindingLayoutEntries(2);
+
+	//
+	// Uniform binding
+	//
+	WGPUBindGroupLayoutEntry& vertexBindingLayout = bindingLayoutEntries[0];
+	SetDefaultBindGroupLayoutEntry(vertexBindingLayout);
+	vertexBindingLayout.binding = 0;
+	vertexBindingLayout.visibility = WGPUShaderStage_Vertex;
+	vertexBindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
+	vertexBindingLayout.buffer.minBindingSize = sizeof(UniformBuffer_t);
+
+	WGPUBindGroupEntry uniformBinding = {
+		.nextInChain = nullptr,
+		.binding = 0,
+		.buffer = UniformBuffer.DataBuffer,
+		.offset = 0,
+		.size = sizeof(UniformBuffer_t)
+	};
+
+	//
+	// Color texture binding
+	//
+	WGPUBindGroupLayoutEntry& fragmentBindingLayout = bindingLayoutEntries[1];
+	SetDefaultBindGroupLayoutEntry(fragmentBindingLayout);
+	fragmentBindingLayout.binding = 1;
+	fragmentBindingLayout.visibility = WGPUShaderStage_Fragment;
+	fragmentBindingLayout.texture.sampleType = WGPUTextureSampleType_Float;
+	fragmentBindingLayout.texture.viewDimension = WGPUTextureViewDimension_2D;
+
+	WGPUBindGroupEntry textureBinding = {
+		.nextInChain = nullptr,
+		.binding = 1,
+		.textureView = ColorTexture.TextureView
+	};
+
+	std::vector<WGPUBindGroupEntry> bindings = { uniformBinding, textureBinding };
 
 	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc = {
 		.nextInChain = nullptr,
-		.entryCount = 1,
-		.entries = &bindingLayout
+		.entryCount = bindingLayoutEntries.size(),
+		.entries = bindingLayoutEntries.data()
 	};
 
 	WGPUBindGroupLayout bindGroupLayout = wgpuDeviceCreateBindGroupLayout(gpu->Device, &bindGroupLayoutDesc);
@@ -569,19 +600,11 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 
 	WGPUPipelineLayout layout = wgpuDeviceCreatePipelineLayout(gpu->Device, &layoutDesc);
 
-	WGPUBindGroupEntry binding = {
-		.nextInChain = nullptr,
-		.binding = 0,
-		.buffer = UniformBuffer.DataBuffer,
-		.offset = 0,
-		.size = sizeof(UniformBuffer_t)
-	};
-
 	WGPUBindGroupDescriptor bindGroupDesc = {
 		.nextInChain = nullptr,
 		.layout = bindGroupLayout,
-		.entryCount = bindGroupLayoutDesc.entryCount,
-		.entries = &binding
+		.entryCount = (unsigned int)bindings.size(),
+		.entries = bindings.data()
 	};
 
 	BindGroup = wgpuDeviceCreateBindGroup(gpu->Device, &bindGroupDesc);
@@ -596,6 +619,7 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 
 	WGPURenderPipelineDescriptor pipelineDesc = {
 		.nextInChain = nullptr,
+		.layout = layout,
 		.vertex = vertexState,
 
 		.primitive = {
@@ -611,7 +635,7 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 			.mask = ~0u,
 			.alphaToCoverageEnabled = false
 		},
-		.fragment = &fragmentState,
+		.fragment = &fragmentState
 	};
 
 	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
@@ -715,8 +739,24 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 				}
 			}
 
+			Texture_t texture;
+
+			if (primitive.material >= 0)
+			{
+				const tinygltf::Material& material = model.materials[primitive.material];
+
+				if (material.pbrMetallicRoughness.baseColorTexture.index >= 0)
+				{
+					const tinygltf::Texture& gltfTexture = model.textures[material.pbrMetallicRoughness.baseColorTexture.index];
+					auto& image = model.images[gltfTexture.source];
+
+					// Directly load texture from memory
+					texture.LoadFromMemory(gpu, image.image.data(), image.width, image.height, image.component);
+				}
+			}
+
 			Mesh_t newMesh;
-			newMesh.Init(gpu, vertices, indices);
+			newMesh.Init(gpu, vertices, indices, texture);
 			Meshes.push_back(newMesh);
 		}
 	}
@@ -742,4 +782,51 @@ void Mesh_t::Destroy()
 {
 	VertexBuffer.Destroy();
 	IndexBuffer.Destroy();
+}
+
+void Texture_t::LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data, int width, int height, int channels)
+{
+	WGPUTextureDescriptor textureDesc = {
+		.nextInChain = nullptr,
+		.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+		.dimension = WGPUTextureDimension_2D,
+		.size = { (unsigned int)width, (unsigned int)height, 1 },
+		.format = WGPUTextureFormat_RGBA8Snorm,
+
+		.mipLevelCount = 1,
+		.sampleCount = 1,
+		.viewFormatCount = 0,
+		.viewFormats = nullptr
+	};
+
+	Texture = wgpuDeviceCreateTexture(gpu->Device, &textureDesc);
+
+	WGPUImageCopyTexture destination = {
+		.nextInChain = nullptr,
+		.texture = Texture,
+		.mipLevel = 0,
+		.origin = { 0, 0, 0 },
+		.aspect = WGPUTextureAspect_All,
+	};
+
+	WGPUTextureDataLayout source = {
+		.offset = 0,
+		.bytesPerRow = (unsigned int)(4 * width),
+		.rowsPerImage = (unsigned int)height
+	};
+
+	wgpuQueueWriteTexture(gpu->Queue, &destination, data, static_cast<size_t>(width * height * channels), &source, &textureDesc.size);
+
+	WGPUTextureViewDescriptor textureViewDesc = {
+		.nextInChain = nullptr,
+		.format = textureDesc.format,
+		.dimension = WGPUTextureViewDimension_2D,
+		.baseMipLevel = 0,
+		.mipLevelCount = 1,
+		.baseArrayLayer = 0,
+		.arrayLayerCount = 1,
+		.aspect = WGPUTextureAspect_All
+	};
+
+	TextureView = wgpuTextureCreateView(Texture, &textureViewDesc);
 }
