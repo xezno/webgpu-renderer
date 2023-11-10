@@ -296,7 +296,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Model
 	//
 	Model = new Model_t();
-	Model->Init(this, "content/models/box.gltf");
+	Model->Init(this, "content/models/Suzanne.gltf");
 
 	Camera = new Camera_t();
 	Camera->Transform = *Transform_t::MakeDefault();
