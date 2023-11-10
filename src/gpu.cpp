@@ -57,8 +57,6 @@ WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions cons
 WGPUDevice RequestDevice(WGPUAdapter adapter, WGPUDeviceDescriptor const* descriptor)
 {
 	struct Data
-
-
 	{
 		WGPUDevice device = nullptr;
 		bool requestEnded = false;
@@ -314,7 +312,7 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	// Model
 	//
 	Model = new Model_t();
-	Model->Init(this, "content/models/Suzanne.gltf");
+	Model->Init(this, "content/models/suzanne.gltf");
 
 	Camera = new Camera_t();
 	Camera->Transform = *Transform_t::MakeDefault();
@@ -506,6 +504,8 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::ve
 {
 	ColorTexture = colorTexture;
 	UniformBuffer = Graphics::MakeUniformBuffer(gpu);
+
+	assert(colorTexture.Texture != nullptr);
 
 	// Vertices
 	WGPUVertexAttribute vertexAttribute = {
@@ -797,7 +797,6 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 						memcpy(&vertex.Normal, &posBuffer.data[normAccessor.byteOffset + normBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
 					else
 						vertex.Normal = glm::vec3(0, 0, 0); // Default normals if not present
-				
 
 					vertices.emplace_back(vertex);
 				}
