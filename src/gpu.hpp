@@ -1,6 +1,9 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <webgpu/webgpu.h>
 
 #include <vector>
@@ -8,6 +11,55 @@
 class CWindow;
 struct GraphicsDevice_t;
 struct Vector3_t;
+
+/*
+ *
+ */
+struct Transform_t
+{
+private:
+	glm::vec4 PositionAndScale									= {0,0,0,1};
+	glm::quat Rotation											= {0,0,0,1};
+
+public:
+	float GetScale()											{ return PositionAndScale.w; }
+	void SetScale(float scale)									{ PositionAndScale.w = scale; }
+
+	glm::vec3 GetPosition()										{ return glm::vec3(PositionAndScale); }
+	void SetPosition(glm::vec3 newPos)							{ float scale = GetScale(); PositionAndScale = glm::vec4(newPos, scale); }
+
+	glm::quat GetRotation()										{ return Rotation; }
+	void SetRotation(glm::quat newRot)							{ Rotation = newRot; }
+
+	static Transform_t* MakeDefault()
+	{
+		Transform_t* tx = new Transform_t();
+		tx->PositionAndScale = { 0,0,0,1 };
+		tx->Rotation = { 0,0,0,1 };
+		return tx;
+	}
+};
+
+/*
+ *
+ */
+struct Camera_t
+{
+	Transform_t Transform										= {};
+
+	float FieldOfView											= 90.0f;
+	float ZNear													= 0.1f;
+	float ZFar													= 100.0f;
+	float Aspect												= 16.0f / 9.0f;
+
+	inline glm::mat4 GetViewProjMatrix()
+	{
+		glm::mat4 view = glm::lookAt(Transform.GetPosition(), glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
+		glm::mat4 projection = glm::perspective(glm::radians(FieldOfView), Aspect, ZNear, ZFar);
+
+		return projection * view;
+	}
+};
 
 /*
  *
@@ -21,29 +73,47 @@ struct GraphicsBuffer_t
 	void Destroy();
 };
 
+/*
+ *
+ */
 struct Mesh_t
 {
 private:
 	friend struct Model_t;
 	
 	WGPURenderPipeline Pipeline									= nullptr;
+	WGPUBindGroup BindGroup										= nullptr;
 	GraphicsBuffer_t IndexBuffer								= {};
 	GraphicsBuffer_t VertexBuffer								= {};
+	Transform_t Transform										= {};
+	GraphicsBuffer_t UniformBuffer								= {};
 
 	void Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices);
-	void Draw(WGPURenderPassEncoder renderPass);
+	void Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass);
+
+	inline glm::mat4 GetModelMatrix()
+	{
+		glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(Transform.GetScale()));
+		glm::mat4 rotationMatrix = glm::mat4_cast(Transform.GetRotation());
+		glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), Transform.GetPosition());
+
+		return translationMatrix * rotationMatrix * scaleMatrix;
+	}
 
 	void Destroy();
 };
 
+/*
+ *
+ */
 struct Model_t
 {
 private:
-	std::vector<Mesh_t> Meshes									= {};
+	std::vector<Mesh_t> Meshes = {};
 
 public:
 	void Init(GraphicsDevice_t* gpu, const char* gltfPath);
-	void Draw(WGPURenderPassEncoder renderPass);
+	void Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass);
 
 	void Destroy();
 };
@@ -65,6 +135,15 @@ struct GraphicsDevice_t
 };
 
 /*
+ *
+ */
+struct UniformBuffer_t
+{
+	glm::mat4 ModelMatrix										= {};
+	glm::mat4 ViewProjMatrix									= {};
+};
+
+/*
  * Rendering functions
  */
 namespace Graphics
@@ -73,4 +152,7 @@ namespace Graphics
 
 	GraphicsBuffer_t MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertexData, WGPUVertexBufferLayout** vertexBufferLayout);
 	GraphicsBuffer_t MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<unsigned int> indexData);
+
+	GraphicsBuffer_t MakeUniformBuffer(GraphicsDevice_t* gpu);
+	void UpdateUniformBuffer(GraphicsDevice_t* gpu, GraphicsBuffer_t uniformBuffer, UniformBuffer_t uniformBufferData);
 }

@@ -18,7 +18,8 @@
 #include <stb_image_write.h>
 #include <tiny_gltf.h>
 
-static Model_t* TestModel = {};
+static Model_t* Model = {};
+static Camera_t* Camera = {};
 
 WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options)
 {
@@ -114,6 +115,13 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 {
 	// todo: move
 	const char* shaderSource = R"(
+		struct UniformBuffer {
+			modelMatrix : mat4x4f,
+			viewProjMatrix : mat4x4f
+		};
+
+		@group(0) @binding(0) var<uniform> uConstants : UniformBuffer;
+
 		struct VertexOutput {
 			@builtin(position) position: vec4f,
 			@location(0) color: vec4f
@@ -125,7 +133,7 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 			var out : VertexOutput;
 			
 			out.color = vec4f(position.x, position.y, 0.5, 1.0);
-			out.position = vec4f(position, 1.0);
+			out.position = uConstants.viewProjMatrix * uConstants.modelMatrix * vec4f(position, 1.0);
 			
 			return out;
 		}
@@ -152,6 +160,26 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 	WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
 
 	return shaderModule;
+}
+
+void SetDefaultBindGroupLayoutEntry(WGPUBindGroupLayoutEntry& bindingLayout)
+{
+	bindingLayout.buffer.nextInChain = nullptr;
+	bindingLayout.buffer.type = WGPUBufferBindingType_Undefined;
+	bindingLayout.buffer.hasDynamicOffset = false;
+
+	bindingLayout.sampler.nextInChain = nullptr;
+	bindingLayout.sampler.type = WGPUSamplerBindingType_Undefined;
+
+	bindingLayout.storageTexture.nextInChain = nullptr;
+	bindingLayout.storageTexture.access = WGPUStorageTextureAccess_Undefined;
+	bindingLayout.storageTexture.format = WGPUTextureFormat_Undefined;
+	bindingLayout.storageTexture.viewDimension = WGPUTextureViewDimension_Undefined;
+
+	bindingLayout.texture.nextInChain = nullptr;
+	bindingLayout.texture.multisampled = false;
+	bindingLayout.texture.sampleType = WGPUTextureSampleType_Undefined;
+	bindingLayout.texture.viewDimension = WGPUTextureViewDimension_Undefined;
 }
 
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
@@ -214,13 +242,17 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	//
 	// Model
 	//
-	TestModel = new Model_t();
-	TestModel->Init(this, "content/models/box.gltf");
+	Model = new Model_t();
+	Model->Init(this, "content/models/box.gltf");
+
+	Camera = new Camera_t();
+	Camera->Transform = *Transform_t::MakeDefault();
+	Camera->Transform.SetPosition(glm::vec3(-1, 0, 0));
 }
 
 GraphicsDevice_t::~GraphicsDevice_t()
 {
-	delete TestModel;
+	delete Model;
 
 #define RELEASE(x) do { if(x) { wgpu##x##Release(x); x = nullptr; } } while(0)
 	RELEASE(Instance);
@@ -273,7 +305,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 
 	WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
 
-	TestModel->Draw(renderPass);
+	Model->Draw(gpu, renderPass);
 
 	wgpuRenderPassEncoderEnd(renderPass);
 
@@ -357,6 +389,29 @@ GraphicsBuffer_t Graphics::MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<un
 	return indexBuffer;
 }
 
+GraphicsBuffer_t Graphics::MakeUniformBuffer(GraphicsDevice_t* gpu)
+{
+	GraphicsBuffer_t uniformBuffer;
+
+	WGPUBufferDescriptor uniformBufferDesc = {
+		.nextInChain = nullptr,
+		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
+		.size = sizeof(UniformBuffer_t),
+		.mappedAtCreation = false
+	};
+
+	uniformBuffer.DataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &uniformBufferDesc);
+	uniformBuffer.Count = 1;
+	uniformBuffer.DataSize = sizeof(UniformBuffer_t);
+
+	return uniformBuffer;
+}
+
+void Graphics::UpdateUniformBuffer(GraphicsDevice_t* gpu, GraphicsBuffer_t uniformBuffer, UniformBuffer_t uniformBufferData)
+{
+	wgpuQueueWriteBuffer(gpu->Queue, uniformBuffer.DataBuffer, 0, (void*)&uniformBufferData, sizeof(UniformBuffer_t));
+}
+
 void GraphicsBuffer_t::Destroy()
 {
 	wgpuBufferDestroy(DataBuffer);
@@ -365,6 +420,8 @@ void GraphicsBuffer_t::Destroy()
 
 void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices)
 {
+	UniformBuffer = Graphics::MakeUniformBuffer(gpu);
+
 	// Vertices
 	WGPUVertexBufferLayout* vertexBufferLayout;
 	VertexBuffer = Graphics::MakeVertexBuffer(gpu, vertices, &vertexBufferLayout);
@@ -408,6 +465,46 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 		.buffers = vertexBufferLayout
 	};
 
+	WGPUBindGroupLayoutEntry bindingLayout = {};
+	SetDefaultBindGroupLayoutEntry(bindingLayout);
+	bindingLayout.binding = 0;
+	bindingLayout.visibility = WGPUShaderStage_Vertex;
+	bindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
+	bindingLayout.buffer.minBindingSize = sizeof(UniformBuffer_t);
+
+	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc = {
+		.nextInChain = nullptr,
+		.entryCount = 1,
+		.entries = &bindingLayout
+	};
+
+	WGPUBindGroupLayout bindGroupLayout = wgpuDeviceCreateBindGroupLayout(gpu->Device, &bindGroupLayoutDesc);
+
+	WGPUPipelineLayoutDescriptor layoutDesc = {
+		.nextInChain = nullptr,
+		.bindGroupLayoutCount = 1,
+		.bindGroupLayouts = &bindGroupLayout
+	};
+
+	WGPUPipelineLayout layout = wgpuDeviceCreatePipelineLayout(gpu->Device, &layoutDesc);
+
+	WGPUBindGroupEntry binding = {
+		.nextInChain = nullptr,
+		.binding = 0,
+		.buffer = UniformBuffer.DataBuffer,
+		.offset = 0,
+		.size = sizeof(UniformBuffer_t)
+	};
+
+	WGPUBindGroupDescriptor bindGroupDesc = {
+		.nextInChain = nullptr,
+		.layout = bindGroupLayout,
+		.entryCount = bindGroupLayoutDesc.entryCount,
+		.entries = &binding
+	};
+
+	BindGroup = wgpuDeviceCreateBindGroup(gpu->Device, &bindGroupDesc);
+
 	WGPURenderPipelineDescriptor pipelineDesc = {
 		.nextInChain = nullptr,
 		.vertex = vertexState,
@@ -431,11 +528,17 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
 }
 
-void Mesh_t::Draw(WGPURenderPassEncoder renderPass)
+void Mesh_t::Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass)
 {
+	UniformBuffer_t uniformBufferData;
+	uniformBufferData.ModelMatrix = GetModelMatrix();
+	uniformBufferData.ViewProjMatrix = Camera->GetViewProjMatrix();
+	Graphics::UpdateUniformBuffer(gpu, UniformBuffer, uniformBufferData);
+
 	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
 	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexBuffer.DataBuffer, 0, VertexBuffer.DataSize * sizeof(float));
 	wgpuRenderPassEncoderSetIndexBuffer(renderPass, IndexBuffer.DataBuffer, WGPUIndexFormat_Uint32, 0, IndexBuffer.DataSize * sizeof(unsigned int));
+	wgpuRenderPassEncoderSetBindGroup(renderPass, 0, BindGroup, 0, nullptr);
 
 	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexBuffer.Count, 1, 0, 0, 0);
 }
@@ -530,11 +633,11 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 	}
 }
 
-void Model_t::Draw(WGPURenderPassEncoder renderPass)
+void Model_t::Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass)
 {
 	for (auto& mesh : Meshes)
 	{
-		mesh.Draw(renderPass);
+		mesh.Draw(gpu, renderPass);
 	}
 }
 
