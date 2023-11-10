@@ -1,13 +1,15 @@
 #include "gpu.hpp"
 #include "window.hpp"
 
+#include "math/vector3.hpp"
+
 #include <webgpu/webgpu.h>
 
 #include <cassert>
 #include <vector>
 #include <iostream>
 
-static Triangle_t* Triangle;
+static Model_t* TestModel = {};
 
 WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options)
 {
@@ -143,107 +145,6 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 	return shaderModule;
 }
 
-void Triangle_t::Init(GraphicsDevice_t* gpu)
-{
-	//
-	// Vertex data
-	//
-	std::vector<float> vertices = {
-		-0.5f, -0.5f, 0.0f,
-		0.5f, -0.5f, 0.0f,
-		0.0f, 0.5f, 0.0f
-	};
-
-	WGPUVertexBufferLayout* vertexBufferLayout;
-	VertexBuffer = Graphics::MakeVertexBuffer(gpu, vertices, &vertexBufferLayout);
-
-	//
-	// Index data
-	//
-	std::vector<unsigned int> indices = {
-		0, 1, 2
-	};
-
-	IndexBuffer = Graphics::MakeIndexBuffer(gpu, indices);
-
-	//
-	// Shader
-	//
-	WGPUShaderModule shaderModule = CreateShader(gpu->Device);
-
-	//
-	// Pipeline
-	//
-	WGPUBlendState blendState = {
-		.color = {
-			.operation = WGPUBlendOperation_Add,
-			.srcFactor = WGPUBlendFactor_SrcAlpha,
-			.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha
-		}
-	};
-
-	WGPUColorTargetState colorTarget = {
-		.format = WGPUTextureFormat_BGRA8Unorm,
-		.blend = &blendState,
-		.writeMask = WGPUColorWriteMask_All
-	};
-
-	WGPUFragmentState fragmentState = {
-		.module = shaderModule,
-		.entryPoint = "fs_main",
-		.constantCount = 0,
-		.constants = nullptr,
-		.targetCount = 1,
-		.targets = &colorTarget
-	};
-
-	WGPUVertexState vertexState = {
-		.module = shaderModule,
-		.entryPoint = "vs_main",
-		.constantCount = 0,
-		.constants = nullptr,
-		.bufferCount = 1,
-		.buffers = vertexBufferLayout
-	};
-
-	WGPURenderPipelineDescriptor pipelineDesc = {
-		.nextInChain = nullptr,
-		.vertex = vertexState,
-
-		.primitive = {
-			.topology = WGPUPrimitiveTopology_TriangleList,
-			.stripIndexFormat = WGPUIndexFormat_Undefined,
-			.frontFace = WGPUFrontFace_CCW,
-			.cullMode = WGPUCullMode_None
-		},
-
-		.depthStencil = nullptr,
-		.multisample = {
-			.count = 1,
-			.mask = ~0u,
-			.alphaToCoverageEnabled = false
-		},
-		.fragment = &fragmentState,
-	};
-
-	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
-}
-
-void Triangle_t::Draw(WGPURenderPassEncoder renderPass)
-{
-	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
-	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexBuffer.DataBuffer, 0, VertexBuffer.DataSize * sizeof(float));
-	wgpuRenderPassEncoderSetIndexBuffer(renderPass, IndexBuffer.DataBuffer, WGPUIndexFormat_Uint32, 0, IndexBuffer.DataSize * sizeof(unsigned int));
-
-	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexBuffer.Count, 1, 0, 0, 0);
-}
-
-Triangle_t::~Triangle_t()
-{
-	VertexBuffer.Destroy();
-	IndexBuffer.Destroy();
-}
-
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 {
 	//
@@ -302,15 +203,15 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	SwapChain = CreateSwapChain(Device, window);
 
 	//
-	// Triangle
+	// Model
 	//
-	Triangle = new Triangle_t();
-	Triangle->Init(this);
+	TestModel = new Model_t();
+	TestModel->Init(this, "models/test.gltf");
 }
 
 GraphicsDevice_t::~GraphicsDevice_t()
 {
-	delete Triangle;
+	delete TestModel;
 
 #define RELEASE(x) do { if(x) { wgpu##x##Release(x); x = nullptr; } } while(0)
 	RELEASE(Instance);
@@ -363,7 +264,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 
 	WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
 
-	Triangle->Draw(renderPass);
+	TestModel->Draw(renderPass);
 
 	wgpuRenderPassEncoderEnd(renderPass);
 
@@ -389,7 +290,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	wgpuTextureViewRelease(nextTexture);
 }
 
-GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<float> vertexData, WGPUVertexBufferLayout** outVertexBufferLayout)
+GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<Vector3_t> vertexData, WGPUVertexBufferLayout** outVertexBufferLayout)
 {
 	GraphicsBuffer_t vertexBuffer;
 
@@ -397,19 +298,19 @@ GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<f
 		.nextInChain = nullptr,
 		.label = "Vertex Data Buffer",
 		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-		.size = vertexData.size() * sizeof(float),
+		.size = vertexData.size() * sizeof(Vector3_t),
 		.mappedAtCreation = false
 	};
 
 	vertexBuffer.DataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &vertexBufferDesc);
 
-	WGPUVertexAttribute* vertexAttribute = new WGPUVertexAttribute {
+	WGPUVertexAttribute* vertexAttribute = new WGPUVertexAttribute{
 		.format = WGPUVertexFormat_Float32x3,
 		.offset = 0,
 		.shaderLocation = 0,
 	};
 
-	WGPUVertexBufferLayout* vertexBufferLayout = new WGPUVertexBufferLayout {
+	WGPUVertexBufferLayout* vertexBufferLayout = new WGPUVertexBufferLayout{
 		.arrayStride = 3 * sizeof(float),
 		.stepMode = WGPUVertexStepMode_Vertex,
 		.attributeCount = 1,
@@ -418,7 +319,7 @@ GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<f
 
 	wgpuQueueWriteBuffer(gpu->Queue, vertexBuffer.DataBuffer, 0, vertexData.data(), vertexBufferDesc.size);
 
-	vertexBuffer.Count = 3;
+	vertexBuffer.Count = vertexData.size();
 	vertexBuffer.DataSize = vertexData.size();
 
 	*outVertexBufferLayout = vertexBufferLayout;
@@ -441,7 +342,7 @@ GraphicsBuffer_t Graphics::MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<un
 	indexBuffer.DataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &indexBufferDesc);
 	wgpuQueueWriteBuffer(gpu->Queue, indexBuffer.DataBuffer, 0, indexData.data(), indexBufferDesc.size);
 
-	indexBuffer.Count = 3;
+	indexBuffer.Count = indexData.size();
 	indexBuffer.DataSize = indexData.size();
 
 	return indexBuffer;
@@ -451,4 +352,123 @@ void GraphicsBuffer_t::Destroy()
 {
 	wgpuBufferDestroy(DataBuffer);
 	wgpuBufferRelease(DataBuffer);
+}
+
+void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vector3_t> vertices, std::vector<unsigned int> indices)
+{
+	// Vertices
+	WGPUVertexBufferLayout* vertexBufferLayout;
+	VertexBuffer = Graphics::MakeVertexBuffer(gpu, vertices, &vertexBufferLayout);
+
+	// Indices
+	IndexBuffer = Graphics::MakeIndexBuffer(gpu, indices);
+
+	// Shader
+	WGPUShaderModule shaderModule = CreateShader(gpu->Device);
+
+	// Pipeline
+	WGPUBlendState blendState = {
+		.color = {
+			.operation = WGPUBlendOperation_Add,
+			.srcFactor = WGPUBlendFactor_SrcAlpha,
+			.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha
+		}
+	};
+
+	WGPUColorTargetState colorTarget = {
+		.format = WGPUTextureFormat_BGRA8Unorm,
+		.blend = &blendState,
+		.writeMask = WGPUColorWriteMask_All
+	};
+
+	WGPUFragmentState fragmentState = {
+		.module = shaderModule,
+		.entryPoint = "fs_main",
+		.constantCount = 0,
+		.constants = nullptr,
+		.targetCount = 1,
+		.targets = &colorTarget
+	};
+
+	WGPUVertexState vertexState = {
+		.module = shaderModule,
+		.entryPoint = "vs_main",
+		.constantCount = 0,
+		.constants = nullptr,
+		.bufferCount = 1,
+		.buffers = vertexBufferLayout
+	};
+
+	WGPURenderPipelineDescriptor pipelineDesc = {
+		.nextInChain = nullptr,
+		.vertex = vertexState,
+
+		.primitive = {
+			.topology = WGPUPrimitiveTopology_TriangleList,
+			.stripIndexFormat = WGPUIndexFormat_Undefined,
+			.frontFace = WGPUFrontFace_CCW,
+			.cullMode = WGPUCullMode_None
+		},
+
+		.depthStencil = nullptr,
+		.multisample = {
+			.count = 1,
+			.mask = ~0u,
+			.alphaToCoverageEnabled = false
+		},
+		.fragment = &fragmentState,
+	};
+
+	Pipeline = wgpuDeviceCreateRenderPipeline(gpu->Device, &pipelineDesc);
+}
+
+void Mesh_t::Draw(WGPURenderPassEncoder renderPass)
+{
+	wgpuRenderPassEncoderSetPipeline(renderPass, Pipeline);
+	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, VertexBuffer.DataBuffer, 0, VertexBuffer.DataSize * sizeof(float));
+	wgpuRenderPassEncoderSetIndexBuffer(renderPass, IndexBuffer.DataBuffer, WGPUIndexFormat_Uint32, 0, IndexBuffer.DataSize * sizeof(unsigned int));
+
+	wgpuRenderPassEncoderDrawIndexed(renderPass, IndexBuffer.Count, 1, 0, 0, 0);
+}
+
+void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
+{
+	// Temp - for testing - todo: load from gltf using tinygltf
+
+	std::vector<Vector3_t> tempVerts = {
+		{ -0.5f, -0.5f, 0.0f },
+		{ 0.5f, -0.5f, 0.0f },
+		{ 0.0f, 0.5f, 0.0f }
+	};
+
+	std::vector<unsigned int> tempInd = {
+		0, 1, 2
+	};
+
+	Mesh_t tempMesh;
+	tempMesh.Init(gpu, tempVerts, tempInd);
+
+	Meshes.push_back(tempMesh);
+}
+
+void Model_t::Draw(WGPURenderPassEncoder renderPass)
+{
+	for (auto& mesh : Meshes)
+	{
+		mesh.Draw(renderPass);
+	}
+}
+
+void Model_t::Destroy()
+{
+	for (auto& mesh : Meshes)
+	{
+		mesh.Destroy();
+	}
+}
+
+void Mesh_t::Destroy()
+{
+	VertexBuffer.Destroy();
+	IndexBuffer.Destroy();
 }
