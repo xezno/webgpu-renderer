@@ -1,6 +1,7 @@
 #pragma once
 
-#include "webgpu/webgpu.h"
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.h>
 
 #include <vector>
 
@@ -29,7 +30,7 @@ private:
 	GraphicsBuffer_t IndexBuffer								= {};
 	GraphicsBuffer_t VertexBuffer								= {};
 
-	void Init(GraphicsDevice_t* gpu, std::vector<Vector3_t> vertices, std::vector<unsigned int> indices);
+	void Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices);
 	void Draw(WGPURenderPassEncoder renderPass);
 
 	void Destroy();
@@ -70,6 +71,6 @@ namespace Graphics
 {
 	void OnRender(GraphicsDevice_t* gpu);
 
-	GraphicsBuffer_t MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<Vector3_t> vertexData, WGPUVertexBufferLayout** vertexBufferLayout);
+	GraphicsBuffer_t MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertexData, WGPUVertexBufferLayout** vertexBufferLayout);
 	GraphicsBuffer_t MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<unsigned int> indexData);
 }

@@ -1,9 +1,6 @@
 #include "gpu.hpp"
 #include "window.hpp"
 
-#include <webgpu/webgpu.h>
-#include <glm/glm.hpp>
-
 #include <cassert>
 #include <vector>
 #include <iostream>
@@ -366,7 +363,7 @@ void GraphicsBuffer_t::Destroy()
 	wgpuBufferRelease(DataBuffer);
 }
 
-void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vector3_t> vertices, std::vector<unsigned int> indices)
+void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices)
 {
 	// Vertices
 	WGPUVertexBufferLayout* vertexBufferLayout;
@@ -484,7 +481,7 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 	// Load all meshes
 	for (auto& mesh : model.meshes)
 	{
-		std::vector<Vector3_t> vertices = {};
+		std::vector<glm::vec3> vertices = {};
 		std::vector<unsigned int> indices = {};
 
 		for (auto& primitive : mesh.primitives)

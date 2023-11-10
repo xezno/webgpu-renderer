@@ -8,6 +8,7 @@ add_subdirectory(thirdparty/glfw)                   # glfw
 add_subdirectory(thirdparty/dawn)                   # webgpu
 add_subdirectory(thirdparty/glfw3webgpu)            # glfw3webgpu
 add_subdirectory(thirdparty/tinygltf)               # tinygltf
+add_subdirectory(thirdparty/glm)                    # glm
 
 # Glob src/
 file(GLOB_RECURSE SOURCE_FILES src/*.cpp src/*.h)
@@ -32,6 +33,7 @@ target_link_libraries(
   webgpu
   glfw3webgpu
   tinygltf
+  glm
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES VS_DEBUGGER_ENVIRONMENT "DAWN_DEBUG_BREAK_ON_ERROR=1")
