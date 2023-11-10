@@ -15,6 +15,16 @@ struct Vector3_t;
 /*
  *
  */
+struct Vertex_t
+{
+	glm::vec3 Position											= {};
+	glm::vec2 TexCoords											= {};
+	glm::vec3 Normal											= {};
+};
+
+/*
+ *
+ */
 struct Transform_t
 {
 private:
@@ -80,6 +90,7 @@ struct Texture_t
 {
 	WGPUTexture Texture											= nullptr;
 	WGPUTextureView TextureView									= nullptr;
+	WGPUSampler Sampler											= nullptr;
 
 	void LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data, int width, int height, int channels);
 };
@@ -101,7 +112,7 @@ private:
 
 	Texture_t ColorTexture										= {};
 
-	void Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices, Texture_t colorTexture);
+	void Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::vector<unsigned int> indices, Texture_t colorTexture);
 	void Draw(GraphicsDevice_t* gpu, WGPURenderPassEncoder renderPass);
 
 	inline glm::mat4 GetModelMatrix()
@@ -166,7 +177,7 @@ namespace Graphics
 {
 	void OnRender(GraphicsDevice_t* gpu);
 
-	GraphicsBuffer_t MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertexData, WGPUVertexBufferLayout** vertexBufferLayout);
+	GraphicsBuffer_t MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertexData, WGPUVertexBufferLayout vertexBufferLayout);
 	GraphicsBuffer_t MakeIndexBuffer(GraphicsDevice_t* gpu, std::vector<unsigned int> indexData);
 
 	GraphicsBuffer_t MakeUniformBuffer(GraphicsDevice_t* gpu);

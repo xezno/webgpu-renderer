@@ -120,29 +120,48 @@ WGPUShaderModule CreateShader(WGPUDevice device)
 	// todo: move
 	const char* shaderSource = R"(
 		struct UniformBuffer {
-			modelMatrix : mat4x4f,
-			viewProjMatrix : mat4x4f
+			modelMatrix: mat4x4f,
+			viewProjMatrix: mat4x4f
 		};
 
-		@group(0) @binding(0) var<uniform> uConstants : UniformBuffer;
-		@group(0) @binding(1) var colorTexture : texture_2d<f32>;
+		@group(0) @binding(0) var<uniform> uConstants: UniformBuffer;
+		@group(0) @binding(1) var colorTexture: texture_2d<f32>;
+		@group(0) @binding(2) var colorSampler: sampler;
+
+		const lightDirection: vec3f = normalize(vec3f(-1.0, 1.0, 0.0));
 
 		struct VertexOutput {
-			@builtin(position) position: vec4f
+			@builtin(position) position: vec4f,
+			@location(0) uv: vec2f,
+			@location(1) normal: vec3f
 		};
 		
 		@vertex
-		fn vs_main(@location(0) position: vec3f) -> VertexOutput
+		fn vs_main(@location(0) position: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3f) -> VertexOutput
 		{
 			var out : VertexOutput;
 			out.position = uConstants.viewProjMatrix * uConstants.modelMatrix * vec4f(position, 1.0);
+			out.uv = uv;
+
+		    // out.normal = normalize((uConstants.normalMatrix * vec4f(normal, 0.0)).xyz); // Transform the normal
+			out.normal = normal;
+
 			return out;
 		}
 
 		@fragment
 		fn fs_main(in: VertexOutput) -> @location(0) vec4f
 		{
-			return vec4f( textureLoad(colorTexture, vec2i(in.position.xy), 0).rgb, 1.0 );
+			let N: vec3f = normalize(in.normal); // Normalized normal vector
+			let L: vec3f = normalize(lightDirection); // Normalized light direction
+			
+			let diffuse: f32 = max(dot(N, L), 0.0);
+			let ambient: f32 = 0.1f;
+			
+			let textureColor: vec4f = textureSample(colorTexture, colorSampler, in.uv);
+			let shadedColor: vec3f = textureColor.rgb * (diffuse + ambient);
+			
+			return vec4f(shadedColor, 1.0);
 		}
 	)";
 
@@ -328,7 +347,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	Camera->Transform.SetPosition(glm::vec3(
 		glm::sin(d) * 4.0f,
 		glm::cos(d) * 4.0f,
-		(glm::sin(d) * 4.0f) + 4.0f
+		(glm::cos(d) * 4.0f) + 4.0f
 	));
 
 	WGPUTextureView nextTexture = wgpuSwapChainGetCurrentTextureView(gpu->SwapChain);
@@ -411,7 +430,7 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 	wgpuTextureViewRelease(nextTexture);
 }
 
-GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertexData, WGPUVertexBufferLayout** outVertexBufferLayout)
+GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertexData, WGPUVertexBufferLayout vertexBufferLayout)
 {
 	GraphicsBuffer_t vertexBuffer;
 
@@ -419,31 +438,16 @@ GraphicsBuffer_t Graphics::MakeVertexBuffer(GraphicsDevice_t* gpu, std::vector<g
 		.nextInChain = nullptr,
 		.label = "Vertex Data Buffer",
 		.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-		.size = vertexData.size() * sizeof(glm::vec3),
+		.size = vertexData.size() * sizeof(Vertex_t),
 		.mappedAtCreation = false
 	};
 
 	vertexBuffer.DataBuffer = wgpuDeviceCreateBuffer(gpu->Device, &vertexBufferDesc);
 
-	WGPUVertexAttribute* vertexAttribute = new WGPUVertexAttribute{
-		.format = WGPUVertexFormat_Float32x3,
-		.offset = 0,
-		.shaderLocation = 0,
-	};
-
-	WGPUVertexBufferLayout* vertexBufferLayout = new WGPUVertexBufferLayout{
-		.arrayStride = 3 * sizeof(float),
-		.stepMode = WGPUVertexStepMode_Vertex,
-		.attributeCount = 1,
-		.attributes = vertexAttribute
-	};
-
 	wgpuQueueWriteBuffer(gpu->Queue, vertexBuffer.DataBuffer, 0, vertexData.data(), vertexBufferDesc.size);
 
 	vertexBuffer.Count = vertexData.size();
 	vertexBuffer.DataSize = vertexData.size();
-
-	*outVertexBufferLayout = vertexBufferLayout;
 
 	return vertexBuffer;
 }
@@ -498,14 +502,40 @@ void GraphicsBuffer_t::Destroy()
 	wgpuBufferRelease(DataBuffer);
 }
 
-void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::vector<unsigned int> indices, Texture_t colorTexture)
+void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<Vertex_t> vertices, std::vector<unsigned int> indices, Texture_t colorTexture)
 {
 	ColorTexture = colorTexture;
 	UniformBuffer = Graphics::MakeUniformBuffer(gpu);
 
 	// Vertices
-	WGPUVertexBufferLayout* vertexBufferLayout;
-	VertexBuffer = Graphics::MakeVertexBuffer(gpu, vertices, &vertexBufferLayout);
+	WGPUVertexAttribute vertexAttribute = {
+		.format = WGPUVertexFormat_Float32x3,
+		.offset = 0,
+		.shaderLocation = 0,
+	};
+
+	WGPUVertexAttribute uvAttribute = {
+		.format = WGPUVertexFormat_Float32x2,
+		.offset = sizeof(glm::vec3),
+		.shaderLocation = 1,
+	};
+
+	WGPUVertexAttribute normalAttribute = {
+		.format = WGPUVertexFormat_Float32x3,
+		.offset = sizeof(glm::vec3) + sizeof(glm::vec2),
+		.shaderLocation = 2,
+	};
+
+	std::vector<WGPUVertexAttribute> vertexAttributes = { vertexAttribute, uvAttribute, normalAttribute };
+
+	WGPUVertexBufferLayout vertexBufferLayout = {
+		.arrayStride = sizeof(Vertex_t),
+		.stepMode = WGPUVertexStepMode_Vertex,
+		.attributeCount = vertexAttributes.size(),
+		.attributes = vertexAttributes.data()
+	};
+
+	VertexBuffer = Graphics::MakeVertexBuffer(gpu, vertices, vertexBufferLayout);
 
 	// Indices
 	IndexBuffer = Graphics::MakeIndexBuffer(gpu, indices);
@@ -543,10 +573,10 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 		.constantCount = 0,
 		.constants = nullptr,
 		.bufferCount = 1,
-		.buffers = vertexBufferLayout
+		.buffers = &vertexBufferLayout
 	};
 
-	std::vector<WGPUBindGroupLayoutEntry> bindingLayoutEntries(2);
+	std::vector<WGPUBindGroupLayoutEntry> bindingLayoutEntries(3);
 
 	//
 	// Uniform binding
@@ -582,7 +612,21 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 		.textureView = ColorTexture.TextureView
 	};
 
-	std::vector<WGPUBindGroupEntry> bindings = { uniformBinding, textureBinding };
+	//
+	// Sampler
+	//
+	WGPUBindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
+	samplerBindingLayout.binding = 2;
+	samplerBindingLayout.visibility = WGPUShaderStage_Fragment;
+	samplerBindingLayout.sampler.type = WGPUSamplerBindingType_Filtering;
+
+	WGPUBindGroupEntry samplerBinding = {
+		.nextInChain = nullptr,
+		.binding = 2,
+		.sampler = ColorTexture.Sampler
+	};
+
+	std::vector<WGPUBindGroupEntry> bindings = { uniformBinding, textureBinding, samplerBinding };
 
 	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc = {
 		.nextInChain = nullptr,
@@ -697,7 +741,7 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 	// Load all meshes
 	for (auto& mesh : model.meshes)
 	{
-		std::vector<glm::vec3> vertices = {};
+		std::vector<Vertex_t> vertices = {};
 		std::vector<unsigned int> indices = {};
 
 		for (auto& primitive : mesh.primitives)
@@ -723,19 +767,39 @@ void Model_t::Init(GraphicsDevice_t* gpu, const char* gltfPath)
 
 			// Load vertices
 			{
-				auto& accessor = model.accessors[primitive.attributes["POSITION"]];
-				auto& bufferView = model.bufferViews[accessor.bufferView];
-				auto& buffer = model.buffers[bufferView.buffer];
+				auto& posAccessor = model.accessors[primitive.attributes["POSITION"]];
+				auto& posBufferView = model.bufferViews[posAccessor.bufferView];
+				auto& posBuffer = model.buffers[posBufferView.buffer];
 
-				auto& data = buffer.data[accessor.byteOffset + bufferView.byteOffset];
+				auto& uvAccessor = model.accessors[primitive.attributes["TEXCOORD_0"]];
+				auto& uvBufferView = model.bufferViews[uvAccessor.bufferView];
+				auto& uvBuffer = model.buffers[uvBufferView.buffer];
 
-				for (int i = 0; i < accessor.count; ++i)
+				auto& normAccessor = model.accessors[primitive.attributes["NORMAL"]];
+				auto& normBufferView = model.bufferViews[normAccessor.bufferView];
+				auto& normBuffer = model.buffers[normBufferView.buffer];
+
+				for (int i = 0; i < posAccessor.count; ++i)
 				{
-					glm::vec3 vert = {};
+					Vertex_t vertex = {};
 
-					memcpy(&vert, &buffer.data[accessor.byteOffset + bufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
+					// Load position
+					memcpy(&vertex.Position, &posBuffer.data[posAccessor.byteOffset + posBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
 
-					vertices.emplace_back(vert);
+					// Load UVs
+					if (primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end())
+						memcpy(&vertex.TexCoords, &uvBuffer.data[uvAccessor.byteOffset + uvBufferView.byteOffset + i * sizeof(glm::vec2)], sizeof(glm::vec2));
+					else
+						vertex.TexCoords = glm::vec2(0.0f, 0.0f); // Default UVs if not present
+
+					// Load normals
+					if (primitive.attributes.find("NORMAL") != primitive.attributes.end())
+						memcpy(&vertex.Normal, &posBuffer.data[normAccessor.byteOffset + normBufferView.byteOffset + i * sizeof(glm::vec3)], sizeof(glm::vec3));
+					else
+						vertex.Normal = glm::vec3(0, 0, 0); // Default normals if not present
+				
+
+					vertices.emplace_back(vertex);
 				}
 			}
 
@@ -829,4 +893,19 @@ void Texture_t::LoadFromMemory(GraphicsDevice_t* gpu, const unsigned char* data,
 	};
 
 	TextureView = wgpuTextureCreateView(Texture, &textureViewDesc);
+
+	WGPUSamplerDescriptor samplerDesc = {
+		.addressModeU = WGPUAddressMode_ClampToEdge,
+		.addressModeV = WGPUAddressMode_ClampToEdge,
+		.addressModeW = WGPUAddressMode_ClampToEdge,
+		.magFilter = WGPUFilterMode_Linear,
+		.minFilter = WGPUFilterMode_Linear,
+		.mipmapFilter = WGPUMipmapFilterMode_Linear,
+		.lodMinClamp = 0.0f,
+		.lodMaxClamp = 1.0f,
+		.compare = WGPUCompareFunction_Undefined,
+		.maxAnisotropy = 1
+	};
+
+	Sampler = wgpuDeviceCreateSampler(gpu->Device, &samplerDesc);
 }
