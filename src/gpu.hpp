@@ -47,14 +47,14 @@ struct Camera_t
 {
 	Transform_t Transform										= {};
 
-	float FieldOfView											= 90.0f;
+	float FieldOfView											= 50.0f;
 	float ZNear													= 0.1f;
 	float ZFar													= 100.0f;
 	float Aspect												= 16.0f / 9.0f;
 
 	inline glm::mat4 GetViewProjMatrix()
 	{
-		glm::mat4 view = glm::lookAt(Transform.GetPosition(), glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
+		glm::mat4 view = glm::lookAt(Transform.GetPosition(), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0));
 		glm::mat4 projection = glm::perspective(glm::radians(FieldOfView), Aspect, ZNear, ZFar);
 
 		return projection * view;
@@ -129,6 +129,9 @@ struct GraphicsDevice_t
 	WGPUDevice Device											= nullptr;
 	WGPUQueue Queue												= nullptr;
 	WGPUSwapChain SwapChain										= nullptr;
+
+	WGPUTextureView DepthTextureView							= nullptr;
+	WGPUTexture DepthTexture									= nullptr;
 
 	GraphicsDevice_t(CWindow* window);
 	~GraphicsDevice_t();

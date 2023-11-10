@@ -20,6 +20,8 @@
 
 static Model_t* Model = {};
 static Camera_t* Camera = {};
+static WGPUTextureFormat DepthTextureFormat = WGPUTextureFormat_Depth24Plus;
+static float Frame = 0;
 
 WGPUAdapter RequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const* options)
 {
@@ -100,8 +102,8 @@ WGPUSwapChain CreateSwapChain(WGPUDevice device, CWindow* window)
 		.nextInChain = nullptr,
 		.usage = WGPUTextureUsage_RenderAttachment,
 		.format = WGPUTextureFormat_BGRA8Unorm, // note: Dawn only supports this as swapchain right now, `wgpuSurfaceGetPreferredFormat` not implemented
-		.width = static_cast<uint32_t>(window->GetSize().x),
-		.height = static_cast<uint32_t>(window->GetSize().y),
+		.width = static_cast<unsigned int>(window->GetSize().x),
+		.height = static_cast<unsigned int>(window->GetSize().y),
 		.presentMode = WGPUPresentMode_Fifo
 	};
 
@@ -182,6 +184,29 @@ void SetDefaultBindGroupLayoutEntry(WGPUBindGroupLayoutEntry& bindingLayout)
 	bindingLayout.texture.viewDimension = WGPUTextureViewDimension_Undefined;
 }
 
+void SetDefaultStencilFaceState(WGPUStencilFaceState& stencilFaceState)
+{
+	stencilFaceState.compare = WGPUCompareFunction_Always;
+	stencilFaceState.failOp = WGPUStencilOperation_Keep;
+	stencilFaceState.depthFailOp = WGPUStencilOperation_Keep;
+	stencilFaceState.passOp = WGPUStencilOperation_Keep;
+}
+
+void SetDefaultDepthStencilState(WGPUDepthStencilState& depthStencilState)
+{
+	depthStencilState.format = WGPUTextureFormat_Undefined;
+	depthStencilState.depthWriteEnabled = false;
+	depthStencilState.depthCompare = WGPUCompareFunction_Always;
+	depthStencilState.stencilReadMask = 0xFFFFFFFF;
+	depthStencilState.stencilWriteMask = 0xFFFFFFFF;
+	depthStencilState.depthBias = 0;
+	depthStencilState.depthBiasSlopeScale = 0;
+	depthStencilState.depthBiasClamp = 0;
+
+	SetDefaultStencilFaceState(depthStencilState.stencilFront);
+	SetDefaultStencilFaceState(depthStencilState.stencilBack);
+}
+
 GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 {
 	//
@@ -240,6 +265,34 @@ GraphicsDevice_t::GraphicsDevice_t(CWindow* window)
 	SwapChain = CreateSwapChain(Device, window);
 
 	//
+	// Depth texture
+	//
+	WGPUTextureDescriptor depthTextureDesc = {
+		.usage = WGPUTextureUsage_RenderAttachment,
+		.dimension = WGPUTextureDimension_2D,
+		.size = {(unsigned int)window->GetSize().x, (unsigned int)window->GetSize().y, 1},
+		.format = DepthTextureFormat,
+		.mipLevelCount = 1,
+		.sampleCount = 1,
+		.viewFormatCount = 1,
+		.viewFormats = &DepthTextureFormat,
+	};
+
+	DepthTexture = wgpuDeviceCreateTexture(Device, &depthTextureDesc);
+
+	WGPUTextureViewDescriptor depthTextureViewDesc = {
+		.format = DepthTextureFormat,
+		.dimension = WGPUTextureViewDimension_2D,
+		.baseMipLevel = 0,
+		.mipLevelCount = 1,
+		.baseArrayLayer = 0,
+		.arrayLayerCount = 1,
+		.aspect = WGPUTextureAspect_DepthOnly
+	};
+
+	DepthTextureView = wgpuTextureCreateView(DepthTexture, &depthTextureViewDesc);
+	
+	//
 	// Model
 	//
 	Model = new Model_t();
@@ -261,10 +314,24 @@ GraphicsDevice_t::~GraphicsDevice_t()
 	RELEASE(Queue);
 	RELEASE(SwapChain);
 #undef RELEASE
+
+	wgpuTextureViewRelease(DepthTextureView);
+	wgpuTextureDestroy(DepthTexture);
+	wgpuTextureRelease(DepthTexture);
 }
 
 void Graphics::OnRender(GraphicsDevice_t* gpu)
 {
+	Frame++;
+
+	float d = Frame / 144.0f; // lol
+
+	Camera->Transform.SetPosition(glm::vec3(
+		glm::sin(d) * 4.0f,
+		glm::cos(d) * 4.0f,
+		(glm::sin(d) * 4.0f) + 4.0f
+	));
+
 	WGPUTextureView nextTexture = wgpuSwapChainGetCurrentTextureView(gpu->SwapChain);
 
 	if (!nextTexture)
@@ -295,11 +362,25 @@ void Graphics::OnRender(GraphicsDevice_t* gpu)
 		.clearValue = WGPUColor{ 0.0, 0.0, 0.0, 1.0 }
 	};
 
+	WGPURenderPassDepthStencilAttachment renderPassDepthAttachment = {
+		.view = gpu->DepthTextureView,
+
+		.depthLoadOp = WGPULoadOp_Clear,
+		.depthStoreOp = WGPUStoreOp_Store,
+		.depthClearValue = 1.0f,
+		.depthReadOnly = false,
+
+		.stencilLoadOp = WGPULoadOp_Undefined,
+		.stencilStoreOp = WGPUStoreOp_Undefined,
+		.stencilClearValue = 0,
+		.stencilReadOnly = true
+	};
+
 	WGPURenderPassDescriptor renderPassDesc = {
 		.nextInChain = nullptr,
 		.colorAttachmentCount = 1,
 		.colorAttachments = &renderPassColorAttachment,
-		.depthStencilAttachment = nullptr,
+		.depthStencilAttachment = &renderPassDepthAttachment,
 		.timestampWrites = nullptr
 	};
 
@@ -505,6 +586,14 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 
 	BindGroup = wgpuDeviceCreateBindGroup(gpu->Device, &bindGroupDesc);
 
+	WGPUDepthStencilState depthStencilState = {};
+	SetDefaultDepthStencilState(depthStencilState);
+	depthStencilState.depthCompare = WGPUCompareFunction_Less;
+	depthStencilState.depthWriteEnabled = true;
+	depthStencilState.format = DepthTextureFormat;
+	depthStencilState.stencilReadMask = 0;
+	depthStencilState.stencilWriteMask = 0;
+
 	WGPURenderPipelineDescriptor pipelineDesc = {
 		.nextInChain = nullptr,
 		.vertex = vertexState,
@@ -516,7 +605,7 @@ void Mesh_t::Init(GraphicsDevice_t* gpu, std::vector<glm::vec3> vertices, std::v
 			.cullMode = WGPUCullMode_None
 		},
 
-		.depthStencil = nullptr,
+		.depthStencil = &depthStencilState,
 		.multisample = {
 			.count = 1,
 			.mask = ~0u,
